@@ -11,6 +11,8 @@ os.environ["TRITON_CACHE_DIR"] = "/cache/triton"
 
 local_rank = int(os.getenv('LOCAL_RANK', '0'))
 world_size = int(os.getenv('WORLD_SIZE', '1'))
+NUM_EXPERTS = 8
+ep_size = world_size
 
 # Set the CUDA device for this process
 torch.cuda.set_device(local_rank)
@@ -29,13 +31,12 @@ if tokenizer.bos_token_id is None:
 from transformers.models.switch_transformers.modeling_switch_transformers import SwitchTransformersForConditionalGeneration
 from transformers.models.switch_transformers.configuration_switch_transformers import SwitchTransformersConfig 
 
-config = SwitchTransformersConfig(use_deepspeed_moe_layer=True, ep_size=8)
-moe_model = SwitchTransformersForConditionalGeneration(config)
+moe_model = SwitchTransformersForConditionalGeneration.from_pretrained("google/switch-base-8", use_deepspeed_moe_layer=True, ep_size=ep_size, rank=local_rank)
 
 ds_engine = deepspeed.init_inference(moe_model, 
                                     dtype=torch.half,
                                     moe={
-                                        "ep_size": 8,
+                                        "ep_size": ep_size,
                                         "moe_experts": [1], # TO BE VERIFIED: moe_experts is the number of experts you want per GPU
                                     },
                                     replace_with_kernel_inject=True)
@@ -43,7 +44,7 @@ ds_engine = deepspeed.init_inference(moe_model,
 
 
 tokens = tokenizer.encode("Yesterday a turnip arrived and wanted to deliver fantastic news to", return_tensors="pt").to(torch.cuda.current_device())
-output = ds_engine.generate(tokens, max_new_tokens=5, bos_token_id=tokenizer.bos_token_id, output_router_logits=False)
+output = ds_engine.generate(tokens, max_new_tokens=5, decoder_start_token_id=0, eos_token_id=1, pad_token_id=0, output_router_logits=False)
 if local_rank == 0:
     print(tokenizer.decode(output[0]))
 
