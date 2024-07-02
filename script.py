@@ -22,29 +22,32 @@ print(f"STARTING RANK: {local_rank} on GPU {local_rank}")
 dist.init_distributed(dist_backend="nccl", rank=local_rank, world_size=world_size)
 
 tokenizer = AutoTokenizer.from_pretrained("google/switch-base-8")
-# moe_model = AutoModelForSeq2SeqLM.from_pretrained("google/switch-base-8", use_deepspeed_moe_layer=True, ep_size=8)
-
-if tokenizer.bos_token_id is None:
-    tokenizer.bos_token_id = tokenizer.pad_token_id
-    # Taken from https://github.com/huggingface/transformers/issues/8161 where it says 0 == bos_token_id == pad_token_id for T5 tokenizer
 
 from transformers.models.switch_transformers.modeling_switch_transformers import SwitchTransformersForConditionalGeneration
 from transformers.models.switch_transformers.configuration_switch_transformers import SwitchTransformersConfig 
 
 moe_model = SwitchTransformersForConditionalGeneration.from_pretrained("google/switch-base-8", use_deepspeed_moe_layer=True, ep_size=ep_size, rank=local_rank)
 
+torch.save(moe_model.state_dict(), "modified.pth")
+exit(1)
+
+moe_model = moe_model.to("cuda")
+tokens = tokenizer.encode("Yesterday a turnip arrived and wanted to deliver fantastic news to", return_tensors="pt").to(torch.cuda.current_device())
+output = moe_model.generate(tokens, max_new_tokens=50, decoder_start_token_id=0, eos_token_id=1, pad_token_id=0, output_router_logits=False)
+print(tokenizer.decode(output[0]))
+exit(1)
+
 ds_engine = deepspeed.init_inference(moe_model, 
-                                    dtype=torch.half,
+                                    dtype=torch.float,
                                     moe={
                                         "ep_size": ep_size,
-                                        "moe_experts": [1], # TO BE VERIFIED: moe_experts is the number of experts you want per GPU
+                                        "moe_experts": [8], # TO BE VERIFIED: moe_experts is the number of experts you want per GPU
                                     },
                                     replace_with_kernel_inject=True)
 
-
-
 tokens = tokenizer.encode("Yesterday a turnip arrived and wanted to deliver fantastic news to", return_tensors="pt").to(torch.cuda.current_device())
-output = ds_engine.generate(tokens, max_new_tokens=5, decoder_start_token_id=0, eos_token_id=1, pad_token_id=0, output_router_logits=False)
+output = ds_engine.generate(tokens, max_new_tokens=25, decoder_start_token_id=0, eos_token_id=1, pad_token_id=0, output_router_logits=False)
+# generation vars taken from config.json of HF repo
 if local_rank == 0:
     print(tokenizer.decode(output[0]))
 
