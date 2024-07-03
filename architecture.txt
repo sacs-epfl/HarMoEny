@@ -1,0 +1,1307 @@
+[2024-07-03 07:20:17,268] [WARNING] [real_accelerator.py:162:get_accelerator] Setting accelerator to CPU. If you have GPU or other accelerator, we were unable to detect it.
+[2024-07-03 07:20:17,281] [INFO] [real_accelerator.py:203:get_accelerator] Setting ds_accelerator to cpu (auto detect)
+[2024-07-03 07:20:18,077] [WARNING] [real_accelerator.py:162:get_accelerator] Setting accelerator to CPU. If you have GPU or other accelerator, we were unable to detect it.
+[2024-07-03 07:20:18,079] [INFO] [real_accelerator.py:203:get_accelerator] Setting ds_accelerator to cpu (auto detect)
+SwitchTransformersModel(
+  (shared): Embedding(32128, 768)
+  (encoder): SwitchTransformersStack(
+    (embed_tokens): Embedding(32128, 768)
+    (block): ModuleList(
+      (0): SwitchTransformersBlock(
+        (layer): ModuleList(
+          (0): SwitchTransformersLayerSelfAttention(
+            (SelfAttention): SwitchTransformersAttention(
+              (q): Linear(in_features=768, out_features=768, bias=False)
+              (k): Linear(in_features=768, out_features=768, bias=False)
+              (v): Linear(in_features=768, out_features=768, bias=False)
+              (o): Linear(in_features=768, out_features=768, bias=False)
+              (relative_attention_bias): Embedding(32, 12)
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+          (1): SwitchTransformersLayerFF(
+            (mlp): SwitchTransformersDenseActDense(
+              (wi): Linear(in_features=768, out_features=3072, bias=False)
+              (wo): Linear(in_features=3072, out_features=768, bias=False)
+              (dropout): Dropout(p=0.1, inplace=False)
+              (act): ReLU()
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+        )
+      )
+      (1): SwitchTransformersBlock(
+        (layer): ModuleList(
+          (0): SwitchTransformersLayerSelfAttention(
+            (SelfAttention): SwitchTransformersAttention(
+              (q): Linear(in_features=768, out_features=768, bias=False)
+              (k): Linear(in_features=768, out_features=768, bias=False)
+              (v): Linear(in_features=768, out_features=768, bias=False)
+              (o): Linear(in_features=768, out_features=768, bias=False)
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+          (1): SwitchTransformersLayerFF(
+            (mlp): SwitchTransformersSparseMLP(
+              (router): SwitchTransformersTop1Router(
+                (classifier): Linear(in_features=768, out_features=8, bias=False)
+              )
+              (experts): ModuleDict(
+                (expert_0): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_1): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_2): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_3): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_4): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_5): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_6): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_7): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+              )
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+        )
+      )
+      (2): SwitchTransformersBlock(
+        (layer): ModuleList(
+          (0): SwitchTransformersLayerSelfAttention(
+            (SelfAttention): SwitchTransformersAttention(
+              (q): Linear(in_features=768, out_features=768, bias=False)
+              (k): Linear(in_features=768, out_features=768, bias=False)
+              (v): Linear(in_features=768, out_features=768, bias=False)
+              (o): Linear(in_features=768, out_features=768, bias=False)
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+          (1): SwitchTransformersLayerFF(
+            (mlp): SwitchTransformersDenseActDense(
+              (wi): Linear(in_features=768, out_features=3072, bias=False)
+              (wo): Linear(in_features=3072, out_features=768, bias=False)
+              (dropout): Dropout(p=0.1, inplace=False)
+              (act): ReLU()
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+        )
+      )
+      (3): SwitchTransformersBlock(
+        (layer): ModuleList(
+          (0): SwitchTransformersLayerSelfAttention(
+            (SelfAttention): SwitchTransformersAttention(
+              (q): Linear(in_features=768, out_features=768, bias=False)
+              (k): Linear(in_features=768, out_features=768, bias=False)
+              (v): Linear(in_features=768, out_features=768, bias=False)
+              (o): Linear(in_features=768, out_features=768, bias=False)
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+          (1): SwitchTransformersLayerFF(
+            (mlp): SwitchTransformersSparseMLP(
+              (router): SwitchTransformersTop1Router(
+                (classifier): Linear(in_features=768, out_features=8, bias=False)
+              )
+              (experts): ModuleDict(
+                (expert_0): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_1): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_2): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_3): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_4): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_5): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_6): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_7): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+              )
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+        )
+      )
+      (4): SwitchTransformersBlock(
+        (layer): ModuleList(
+          (0): SwitchTransformersLayerSelfAttention(
+            (SelfAttention): SwitchTransformersAttention(
+              (q): Linear(in_features=768, out_features=768, bias=False)
+              (k): Linear(in_features=768, out_features=768, bias=False)
+              (v): Linear(in_features=768, out_features=768, bias=False)
+              (o): Linear(in_features=768, out_features=768, bias=False)
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+          (1): SwitchTransformersLayerFF(
+            (mlp): SwitchTransformersDenseActDense(
+              (wi): Linear(in_features=768, out_features=3072, bias=False)
+              (wo): Linear(in_features=3072, out_features=768, bias=False)
+              (dropout): Dropout(p=0.1, inplace=False)
+              (act): ReLU()
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+        )
+      )
+      (5): SwitchTransformersBlock(
+        (layer): ModuleList(
+          (0): SwitchTransformersLayerSelfAttention(
+            (SelfAttention): SwitchTransformersAttention(
+              (q): Linear(in_features=768, out_features=768, bias=False)
+              (k): Linear(in_features=768, out_features=768, bias=False)
+              (v): Linear(in_features=768, out_features=768, bias=False)
+              (o): Linear(in_features=768, out_features=768, bias=False)
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+          (1): SwitchTransformersLayerFF(
+            (mlp): SwitchTransformersSparseMLP(
+              (router): SwitchTransformersTop1Router(
+                (classifier): Linear(in_features=768, out_features=8, bias=False)
+              )
+              (experts): ModuleDict(
+                (expert_0): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_1): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_2): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_3): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_4): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_5): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_6): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_7): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+              )
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+        )
+      )
+      (6): SwitchTransformersBlock(
+        (layer): ModuleList(
+          (0): SwitchTransformersLayerSelfAttention(
+            (SelfAttention): SwitchTransformersAttention(
+              (q): Linear(in_features=768, out_features=768, bias=False)
+              (k): Linear(in_features=768, out_features=768, bias=False)
+              (v): Linear(in_features=768, out_features=768, bias=False)
+              (o): Linear(in_features=768, out_features=768, bias=False)
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+          (1): SwitchTransformersLayerFF(
+            (mlp): SwitchTransformersDenseActDense(
+              (wi): Linear(in_features=768, out_features=3072, bias=False)
+              (wo): Linear(in_features=3072, out_features=768, bias=False)
+              (dropout): Dropout(p=0.1, inplace=False)
+              (act): ReLU()
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+        )
+      )
+      (7): SwitchTransformersBlock(
+        (layer): ModuleList(
+          (0): SwitchTransformersLayerSelfAttention(
+            (SelfAttention): SwitchTransformersAttention(
+              (q): Linear(in_features=768, out_features=768, bias=False)
+              (k): Linear(in_features=768, out_features=768, bias=False)
+              (v): Linear(in_features=768, out_features=768, bias=False)
+              (o): Linear(in_features=768, out_features=768, bias=False)
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+          (1): SwitchTransformersLayerFF(
+            (mlp): SwitchTransformersSparseMLP(
+              (router): SwitchTransformersTop1Router(
+                (classifier): Linear(in_features=768, out_features=8, bias=False)
+              )
+              (experts): ModuleDict(
+                (expert_0): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_1): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_2): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_3): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_4): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_5): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_6): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_7): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+              )
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+        )
+      )
+      (8): SwitchTransformersBlock(
+        (layer): ModuleList(
+          (0): SwitchTransformersLayerSelfAttention(
+            (SelfAttention): SwitchTransformersAttention(
+              (q): Linear(in_features=768, out_features=768, bias=False)
+              (k): Linear(in_features=768, out_features=768, bias=False)
+              (v): Linear(in_features=768, out_features=768, bias=False)
+              (o): Linear(in_features=768, out_features=768, bias=False)
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+          (1): SwitchTransformersLayerFF(
+            (mlp): SwitchTransformersDenseActDense(
+              (wi): Linear(in_features=768, out_features=3072, bias=False)
+              (wo): Linear(in_features=3072, out_features=768, bias=False)
+              (dropout): Dropout(p=0.1, inplace=False)
+              (act): ReLU()
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+        )
+      )
+      (9): SwitchTransformersBlock(
+        (layer): ModuleList(
+          (0): SwitchTransformersLayerSelfAttention(
+            (SelfAttention): SwitchTransformersAttention(
+              (q): Linear(in_features=768, out_features=768, bias=False)
+              (k): Linear(in_features=768, out_features=768, bias=False)
+              (v): Linear(in_features=768, out_features=768, bias=False)
+              (o): Linear(in_features=768, out_features=768, bias=False)
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+          (1): SwitchTransformersLayerFF(
+            (mlp): SwitchTransformersSparseMLP(
+              (router): SwitchTransformersTop1Router(
+                (classifier): Linear(in_features=768, out_features=8, bias=False)
+              )
+              (experts): ModuleDict(
+                (expert_0): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_1): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_2): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_3): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_4): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_5): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_6): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_7): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+              )
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+        )
+      )
+      (10): SwitchTransformersBlock(
+        (layer): ModuleList(
+          (0): SwitchTransformersLayerSelfAttention(
+            (SelfAttention): SwitchTransformersAttention(
+              (q): Linear(in_features=768, out_features=768, bias=False)
+              (k): Linear(in_features=768, out_features=768, bias=False)
+              (v): Linear(in_features=768, out_features=768, bias=False)
+              (o): Linear(in_features=768, out_features=768, bias=False)
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+          (1): SwitchTransformersLayerFF(
+            (mlp): SwitchTransformersDenseActDense(
+              (wi): Linear(in_features=768, out_features=3072, bias=False)
+              (wo): Linear(in_features=3072, out_features=768, bias=False)
+              (dropout): Dropout(p=0.1, inplace=False)
+              (act): ReLU()
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+        )
+      )
+      (11): SwitchTransformersBlock(
+        (layer): ModuleList(
+          (0): SwitchTransformersLayerSelfAttention(
+            (SelfAttention): SwitchTransformersAttention(
+              (q): Linear(in_features=768, out_features=768, bias=False)
+              (k): Linear(in_features=768, out_features=768, bias=False)
+              (v): Linear(in_features=768, out_features=768, bias=False)
+              (o): Linear(in_features=768, out_features=768, bias=False)
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+          (1): SwitchTransformersLayerFF(
+            (mlp): SwitchTransformersSparseMLP(
+              (router): SwitchTransformersTop1Router(
+                (classifier): Linear(in_features=768, out_features=8, bias=False)
+              )
+              (experts): ModuleDict(
+                (expert_0): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_1): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_2): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_3): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_4): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_5): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_6): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_7): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+              )
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+        )
+      )
+    )
+    (final_layer_norm): SwitchTransformersLayerNorm()
+    (dropout): Dropout(p=0.1, inplace=False)
+  )
+  (decoder): SwitchTransformersStack(
+    (embed_tokens): Embedding(32128, 768)
+    (block): ModuleList(
+      (0): SwitchTransformersBlock(
+        (layer): ModuleList(
+          (0): SwitchTransformersLayerSelfAttention(
+            (SelfAttention): SwitchTransformersAttention(
+              (q): Linear(in_features=768, out_features=768, bias=False)
+              (k): Linear(in_features=768, out_features=768, bias=False)
+              (v): Linear(in_features=768, out_features=768, bias=False)
+              (o): Linear(in_features=768, out_features=768, bias=False)
+              (relative_attention_bias): Embedding(32, 12)
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+          (1): SwitchTransformersLayerCrossAttention(
+            (EncDecAttention): SwitchTransformersAttention(
+              (q): Linear(in_features=768, out_features=768, bias=False)
+              (k): Linear(in_features=768, out_features=768, bias=False)
+              (v): Linear(in_features=768, out_features=768, bias=False)
+              (o): Linear(in_features=768, out_features=768, bias=False)
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+          (2): SwitchTransformersLayerFF(
+            (mlp): SwitchTransformersDenseActDense(
+              (wi): Linear(in_features=768, out_features=3072, bias=False)
+              (wo): Linear(in_features=3072, out_features=768, bias=False)
+              (dropout): Dropout(p=0.1, inplace=False)
+              (act): ReLU()
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+        )
+      )
+      (1): SwitchTransformersBlock(
+        (layer): ModuleList(
+          (0): SwitchTransformersLayerSelfAttention(
+            (SelfAttention): SwitchTransformersAttention(
+              (q): Linear(in_features=768, out_features=768, bias=False)
+              (k): Linear(in_features=768, out_features=768, bias=False)
+              (v): Linear(in_features=768, out_features=768, bias=False)
+              (o): Linear(in_features=768, out_features=768, bias=False)
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+          (1): SwitchTransformersLayerCrossAttention(
+            (EncDecAttention): SwitchTransformersAttention(
+              (q): Linear(in_features=768, out_features=768, bias=False)
+              (k): Linear(in_features=768, out_features=768, bias=False)
+              (v): Linear(in_features=768, out_features=768, bias=False)
+              (o): Linear(in_features=768, out_features=768, bias=False)
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+          (2): SwitchTransformersLayerFF(
+            (mlp): SwitchTransformersSparseMLP(
+              (router): SwitchTransformersTop1Router(
+                (classifier): Linear(in_features=768, out_features=8, bias=False)
+              )
+              (experts): ModuleDict(
+                (expert_0): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_1): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_2): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_3): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_4): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_5): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_6): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_7): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+              )
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+        )
+      )
+      (2): SwitchTransformersBlock(
+        (layer): ModuleList(
+          (0): SwitchTransformersLayerSelfAttention(
+            (SelfAttention): SwitchTransformersAttention(
+              (q): Linear(in_features=768, out_features=768, bias=False)
+              (k): Linear(in_features=768, out_features=768, bias=False)
+              (v): Linear(in_features=768, out_features=768, bias=False)
+              (o): Linear(in_features=768, out_features=768, bias=False)
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+          (1): SwitchTransformersLayerCrossAttention(
+            (EncDecAttention): SwitchTransformersAttention(
+              (q): Linear(in_features=768, out_features=768, bias=False)
+              (k): Linear(in_features=768, out_features=768, bias=False)
+              (v): Linear(in_features=768, out_features=768, bias=False)
+              (o): Linear(in_features=768, out_features=768, bias=False)
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+          (2): SwitchTransformersLayerFF(
+            (mlp): SwitchTransformersDenseActDense(
+              (wi): Linear(in_features=768, out_features=3072, bias=False)
+              (wo): Linear(in_features=3072, out_features=768, bias=False)
+              (dropout): Dropout(p=0.1, inplace=False)
+              (act): ReLU()
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+        )
+      )
+      (3): SwitchTransformersBlock(
+        (layer): ModuleList(
+          (0): SwitchTransformersLayerSelfAttention(
+            (SelfAttention): SwitchTransformersAttention(
+              (q): Linear(in_features=768, out_features=768, bias=False)
+              (k): Linear(in_features=768, out_features=768, bias=False)
+              (v): Linear(in_features=768, out_features=768, bias=False)
+              (o): Linear(in_features=768, out_features=768, bias=False)
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+          (1): SwitchTransformersLayerCrossAttention(
+            (EncDecAttention): SwitchTransformersAttention(
+              (q): Linear(in_features=768, out_features=768, bias=False)
+              (k): Linear(in_features=768, out_features=768, bias=False)
+              (v): Linear(in_features=768, out_features=768, bias=False)
+              (o): Linear(in_features=768, out_features=768, bias=False)
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+          (2): SwitchTransformersLayerFF(
+            (mlp): SwitchTransformersSparseMLP(
+              (router): SwitchTransformersTop1Router(
+                (classifier): Linear(in_features=768, out_features=8, bias=False)
+              )
+              (experts): ModuleDict(
+                (expert_0): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_1): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_2): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_3): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_4): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_5): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_6): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_7): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+              )
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+        )
+      )
+      (4): SwitchTransformersBlock(
+        (layer): ModuleList(
+          (0): SwitchTransformersLayerSelfAttention(
+            (SelfAttention): SwitchTransformersAttention(
+              (q): Linear(in_features=768, out_features=768, bias=False)
+              (k): Linear(in_features=768, out_features=768, bias=False)
+              (v): Linear(in_features=768, out_features=768, bias=False)
+              (o): Linear(in_features=768, out_features=768, bias=False)
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+          (1): SwitchTransformersLayerCrossAttention(
+            (EncDecAttention): SwitchTransformersAttention(
+              (q): Linear(in_features=768, out_features=768, bias=False)
+              (k): Linear(in_features=768, out_features=768, bias=False)
+              (v): Linear(in_features=768, out_features=768, bias=False)
+              (o): Linear(in_features=768, out_features=768, bias=False)
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+          (2): SwitchTransformersLayerFF(
+            (mlp): SwitchTransformersDenseActDense(
+              (wi): Linear(in_features=768, out_features=3072, bias=False)
+              (wo): Linear(in_features=3072, out_features=768, bias=False)
+              (dropout): Dropout(p=0.1, inplace=False)
+              (act): ReLU()
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+        )
+      )
+      (5): SwitchTransformersBlock(
+        (layer): ModuleList(
+          (0): SwitchTransformersLayerSelfAttention(
+            (SelfAttention): SwitchTransformersAttention(
+              (q): Linear(in_features=768, out_features=768, bias=False)
+              (k): Linear(in_features=768, out_features=768, bias=False)
+              (v): Linear(in_features=768, out_features=768, bias=False)
+              (o): Linear(in_features=768, out_features=768, bias=False)
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+          (1): SwitchTransformersLayerCrossAttention(
+            (EncDecAttention): SwitchTransformersAttention(
+              (q): Linear(in_features=768, out_features=768, bias=False)
+              (k): Linear(in_features=768, out_features=768, bias=False)
+              (v): Linear(in_features=768, out_features=768, bias=False)
+              (o): Linear(in_features=768, out_features=768, bias=False)
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+          (2): SwitchTransformersLayerFF(
+            (mlp): SwitchTransformersSparseMLP(
+              (router): SwitchTransformersTop1Router(
+                (classifier): Linear(in_features=768, out_features=8, bias=False)
+              )
+              (experts): ModuleDict(
+                (expert_0): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_1): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_2): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_3): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_4): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_5): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_6): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_7): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+              )
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+        )
+      )
+      (6): SwitchTransformersBlock(
+        (layer): ModuleList(
+          (0): SwitchTransformersLayerSelfAttention(
+            (SelfAttention): SwitchTransformersAttention(
+              (q): Linear(in_features=768, out_features=768, bias=False)
+              (k): Linear(in_features=768, out_features=768, bias=False)
+              (v): Linear(in_features=768, out_features=768, bias=False)
+              (o): Linear(in_features=768, out_features=768, bias=False)
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+          (1): SwitchTransformersLayerCrossAttention(
+            (EncDecAttention): SwitchTransformersAttention(
+              (q): Linear(in_features=768, out_features=768, bias=False)
+              (k): Linear(in_features=768, out_features=768, bias=False)
+              (v): Linear(in_features=768, out_features=768, bias=False)
+              (o): Linear(in_features=768, out_features=768, bias=False)
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+          (2): SwitchTransformersLayerFF(
+            (mlp): SwitchTransformersDenseActDense(
+              (wi): Linear(in_features=768, out_features=3072, bias=False)
+              (wo): Linear(in_features=3072, out_features=768, bias=False)
+              (dropout): Dropout(p=0.1, inplace=False)
+              (act): ReLU()
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+        )
+      )
+      (7): SwitchTransformersBlock(
+        (layer): ModuleList(
+          (0): SwitchTransformersLayerSelfAttention(
+            (SelfAttention): SwitchTransformersAttention(
+              (q): Linear(in_features=768, out_features=768, bias=False)
+              (k): Linear(in_features=768, out_features=768, bias=False)
+              (v): Linear(in_features=768, out_features=768, bias=False)
+              (o): Linear(in_features=768, out_features=768, bias=False)
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+          (1): SwitchTransformersLayerCrossAttention(
+            (EncDecAttention): SwitchTransformersAttention(
+              (q): Linear(in_features=768, out_features=768, bias=False)
+              (k): Linear(in_features=768, out_features=768, bias=False)
+              (v): Linear(in_features=768, out_features=768, bias=False)
+              (o): Linear(in_features=768, out_features=768, bias=False)
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+          (2): SwitchTransformersLayerFF(
+            (mlp): SwitchTransformersSparseMLP(
+              (router): SwitchTransformersTop1Router(
+                (classifier): Linear(in_features=768, out_features=8, bias=False)
+              )
+              (experts): ModuleDict(
+                (expert_0): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_1): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_2): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_3): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_4): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_5): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_6): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_7): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+              )
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+        )
+      )
+      (8): SwitchTransformersBlock(
+        (layer): ModuleList(
+          (0): SwitchTransformersLayerSelfAttention(
+            (SelfAttention): SwitchTransformersAttention(
+              (q): Linear(in_features=768, out_features=768, bias=False)
+              (k): Linear(in_features=768, out_features=768, bias=False)
+              (v): Linear(in_features=768, out_features=768, bias=False)
+              (o): Linear(in_features=768, out_features=768, bias=False)
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+          (1): SwitchTransformersLayerCrossAttention(
+            (EncDecAttention): SwitchTransformersAttention(
+              (q): Linear(in_features=768, out_features=768, bias=False)
+              (k): Linear(in_features=768, out_features=768, bias=False)
+              (v): Linear(in_features=768, out_features=768, bias=False)
+              (o): Linear(in_features=768, out_features=768, bias=False)
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+          (2): SwitchTransformersLayerFF(
+            (mlp): SwitchTransformersDenseActDense(
+              (wi): Linear(in_features=768, out_features=3072, bias=False)
+              (wo): Linear(in_features=3072, out_features=768, bias=False)
+              (dropout): Dropout(p=0.1, inplace=False)
+              (act): ReLU()
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+        )
+      )
+      (9): SwitchTransformersBlock(
+        (layer): ModuleList(
+          (0): SwitchTransformersLayerSelfAttention(
+            (SelfAttention): SwitchTransformersAttention(
+              (q): Linear(in_features=768, out_features=768, bias=False)
+              (k): Linear(in_features=768, out_features=768, bias=False)
+              (v): Linear(in_features=768, out_features=768, bias=False)
+              (o): Linear(in_features=768, out_features=768, bias=False)
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+          (1): SwitchTransformersLayerCrossAttention(
+            (EncDecAttention): SwitchTransformersAttention(
+              (q): Linear(in_features=768, out_features=768, bias=False)
+              (k): Linear(in_features=768, out_features=768, bias=False)
+              (v): Linear(in_features=768, out_features=768, bias=False)
+              (o): Linear(in_features=768, out_features=768, bias=False)
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+          (2): SwitchTransformersLayerFF(
+            (mlp): SwitchTransformersSparseMLP(
+              (router): SwitchTransformersTop1Router(
+                (classifier): Linear(in_features=768, out_features=8, bias=False)
+              )
+              (experts): ModuleDict(
+                (expert_0): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_1): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_2): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_3): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_4): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_5): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_6): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_7): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+              )
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+        )
+      )
+      (10): SwitchTransformersBlock(
+        (layer): ModuleList(
+          (0): SwitchTransformersLayerSelfAttention(
+            (SelfAttention): SwitchTransformersAttention(
+              (q): Linear(in_features=768, out_features=768, bias=False)
+              (k): Linear(in_features=768, out_features=768, bias=False)
+              (v): Linear(in_features=768, out_features=768, bias=False)
+              (o): Linear(in_features=768, out_features=768, bias=False)
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+          (1): SwitchTransformersLayerCrossAttention(
+            (EncDecAttention): SwitchTransformersAttention(
+              (q): Linear(in_features=768, out_features=768, bias=False)
+              (k): Linear(in_features=768, out_features=768, bias=False)
+              (v): Linear(in_features=768, out_features=768, bias=False)
+              (o): Linear(in_features=768, out_features=768, bias=False)
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+          (2): SwitchTransformersLayerFF(
+            (mlp): SwitchTransformersDenseActDense(
+              (wi): Linear(in_features=768, out_features=3072, bias=False)
+              (wo): Linear(in_features=3072, out_features=768, bias=False)
+              (dropout): Dropout(p=0.1, inplace=False)
+              (act): ReLU()
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+        )
+      )
+      (11): SwitchTransformersBlock(
+        (layer): ModuleList(
+          (0): SwitchTransformersLayerSelfAttention(
+            (SelfAttention): SwitchTransformersAttention(
+              (q): Linear(in_features=768, out_features=768, bias=False)
+              (k): Linear(in_features=768, out_features=768, bias=False)
+              (v): Linear(in_features=768, out_features=768, bias=False)
+              (o): Linear(in_features=768, out_features=768, bias=False)
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+          (1): SwitchTransformersLayerCrossAttention(
+            (EncDecAttention): SwitchTransformersAttention(
+              (q): Linear(in_features=768, out_features=768, bias=False)
+              (k): Linear(in_features=768, out_features=768, bias=False)
+              (v): Linear(in_features=768, out_features=768, bias=False)
+              (o): Linear(in_features=768, out_features=768, bias=False)
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+          (2): SwitchTransformersLayerFF(
+            (mlp): SwitchTransformersSparseMLP(
+              (router): SwitchTransformersTop1Router(
+                (classifier): Linear(in_features=768, out_features=8, bias=False)
+              )
+              (experts): ModuleDict(
+                (expert_0): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_1): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_2): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_3): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_4): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_5): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_6): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+                (expert_7): SwitchTransformersDenseActDense(
+                  (wi): Linear(in_features=768, out_features=3072, bias=False)
+                  (wo): Linear(in_features=3072, out_features=768, bias=False)
+                  (dropout): Dropout(p=0.1, inplace=False)
+                  (act): ReLU()
+                )
+              )
+            )
+            (layer_norm): SwitchTransformersLayerNorm()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+        )
+      )
+    )
+    (final_layer_norm): SwitchTransformersLayerNorm()
+    (dropout): Dropout(p=0.1, inplace=False)
+  )
+)
