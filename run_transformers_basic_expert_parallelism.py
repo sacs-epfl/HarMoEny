@@ -16,8 +16,8 @@ os.environ["TRITON_CACHE_DIR"] = "/cache/triton"
 
 FIXED_LENGTH = 30
 NUM_ITERS = 100
-# BATCHES_TO_TEST = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192]
-BATCHES_TO_TEST = [8]
+BATCHES_TO_TEST = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192]
+# BATCHES_TO_TEST = [4, 8]
 
 tokenizer = AutoTokenizer.from_pretrained("google/switch-base-8")
 model = SwitchTransformersEncoderModel.from_pretrained("google/switch-base-8", num_gpus=4)
@@ -62,13 +62,6 @@ with open(f"{DIR}/e2e.csv", "w") as f:
     for num_tokens, latencies in output_data.items():
         for idx, latency in enumerate(latencies):
             writer.writerow({"Number of Tokens": num_tokens, "Iteration Number": idx, "Latency (s)": latency})
-
-# df = pd.DataFrame(columns=columns)
-# for total_tokens, latencies in output_data.items():
-#     for idx, latency in enumerate(latencies):
-#         df_row = pd.DataFrame([[total_tokens, idx, latency]], columns=columns)
-#         df = pd.concat([df, df_row], ignore_index=True)
-# df.to_csv(f"{DIR}/e2e.csv", index=False)
 
 model.expert_save_latencies(DIR)
 

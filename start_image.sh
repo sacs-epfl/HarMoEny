@@ -1,1 +1,1 @@
-docker run -it --gpus all --ipc=host --runtime=nvidia -v .:/workspace -v /raid/citadel/cache:/cache moe:latest
+docker run -it --gpus all --ipc=host -v .:/workspace -v /raid/citadel/cache:/cache moe:latest

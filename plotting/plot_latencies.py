@@ -1,7 +1,7 @@
 import plotly.express as px
 import pandas as pd
 
-df = pd.read_csv("outputs/latency_measurements_naive_expert_parallel_switch_8.csv")
+df = pd.read_csv("outputs/latency_measurements_naive_expert_parallel_switch_8_ORIG.csv")
 df = df[df["Iteration Number"] != 0] 
 
 fig = px.line(df, x="Iteration Number", y="Latency (s)", color="Number of Tokens")
