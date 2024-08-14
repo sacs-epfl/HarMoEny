@@ -1,0 +1,1 @@
+nsys profile -w true -t cuda,nvtx,osrt,cudnn,cublas -s cpu  --force-overwrite=true --capture-range=cudaProfilerApi --cudabacktrace=true -x true -o my_profile python3 exp2_scaling_computation_cost.py

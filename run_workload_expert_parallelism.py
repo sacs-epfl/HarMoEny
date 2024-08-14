@@ -21,7 +21,7 @@ if len(sys.argv) < 2:
     exit(1)
 
 FIXED_LENGTH = 30
-NUM_ITERS = 25
+NUM_ITERS = 25 #25
 # BATCHES_TO_TEST = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192]
 BATCHES_TO_TEST = [8192]
 
