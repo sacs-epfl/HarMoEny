@@ -5,6 +5,7 @@
 import torch
 import torch.nn as nn
 import pandas as pd
+import numpy as np
 
 class SwitchTransformersDenseActDense(nn.Module):
     def __init__(self):
@@ -26,10 +27,13 @@ class SwitchTransformersDenseActDense(nn.Module):
 start_event = torch.cuda.Event(enable_timing=True)
 end_event = torch.cuda.Event(enable_timing=True)
 
-num_tokens = range(5, 1000000, 5)
+
+num_tokens = np.logspace(1, 20, num=1000, base=2).astype(int)
 num_experts = [1, 2, 4, 8, 16]
 
 results = []
+
+NUM_ITERS = 4
 
 torch.cuda.cudart().cudaProfilerStart()
 for i in num_experts:
@@ -38,29 +42,29 @@ for i in num_experts:
         experts[idx] = expert.to("cuda:0")
     torch.cuda.synchronize()
 
-    # WARMUP
-    for p in range(3):
-        for expert in experts:
-            expert.forward(torch.rand((10, 768), device="cuda:0"))
-
     for j in num_tokens:
         if j < i:
             continue
 
-        torch.cuda.nvtx.range_push(f"exp_{i}_tokens_{j}")
-        num_toks_per_expert = j // i
-        _input = torch.rand((i, num_toks_per_expert, 768), device="cuda:0")
-        start_event.record()
-        for idx, expert in enumerate(experts):
-            expert.forward(_input[idx])
-        end_event.record()
-        torch.cuda.synchronize()
-        results.append({
-            "num_experts": i,
-            "tot_num_tokens": i * num_toks_per_expert,
-            "time": start_event.elapsed_time(end_event), 
-        })
-        torch.cuda.nvtx.range_pop()
+        first = True
+        for _iter in range(NUM_ITERS):
+            torch.cuda.nvtx.range_push(f"exp_{i}_tokens_{j}_iter_{_iter}")
+            num_toks_per_expert = j // i
+            _input = torch.rand((i, num_toks_per_expert, 768), device="cuda:0")
+            start_event.record()
+            for idx, expert in enumerate(experts):
+                expert.forward(_input[idx])
+            end_event.record()
+            torch.cuda.synchronize()
+            if first:
+                first = False
+            else:
+                results.append({
+                    "num_experts": i,
+                    "tot_num_tokens": i * num_toks_per_expert,
+                    "time": start_event.elapsed_time(end_event), 
+                })
+            torch.cuda.nvtx.range_pop()
 
 df = pd.DataFrame(results)
 df.to_csv("exp2_results.csv", index=False)
