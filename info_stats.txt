@@ -1,0 +1,64 @@
+Model: GOOGLE SWITCHTRANSFORMER
+- Encoder Decoder architecture but has Encoder only version
+- 5 flavours: 8, 16, 32, 64, 128 experts
+- 12 layers: 6 of which are MoE; every second layer starting from layer 1 (0 is first).
+- hidden Size: 768
+- fp16
+- vocab size: 32,128
+- feedforward size: 3,072
+- num attention heads: 12
+- memory footprint whole model (8 experts): 1685.716992 MB 
+- memory footprint single expert: 20.97152 MB
+
+DATASET: BOOKCORPUS/BOOKCORPUS
+- Number of unique books: 7,185
+- Size of dataset: 4.85GB (from website)
+- Total number of rows: 74,004,228 *
+- Total number of tokens (unpadded): 1,508,550,096 *
+- Avg number of tokens per row: 20.384 *
+
+HARDWARE:
+- 8x V100 GPU 
+    - Memory clock speed: 877 MHz **
+    - Core clock speed: 832.251 MHz **
+- Configuration ***
+         GPU0   GPU1    GPU2    GPU3    GPU4    GPU5    GPU6    GPU7
+    GPU0 X      NV1     NV1     NV2     NV2     SYS     SYS     SYS
+    GPU1 NV1    X       NV2     NV1     SYS     NV2     SYS     SYS   
+    GPU2 NV1    NV2     X       NV2     SYS     SYS     NV1     SYS
+    GPU3 NV2    NV1     NV2     X       SYS     SYS     SYS     NV1
+    GPU4 NV2    SYS     SYS     SYS     X       NV1     NV1     NV2
+    GPU5 SYS    NV2     SYS     SYS     NV1     X       NV2     NV1
+    GPU6 SYS    SYS     NV1     SYS     NV1     NV2     X       NV2
+    GPU7 SYS    SYS     SYS     NV1     NV2     NV1     NV2     X
+
+
+
+
+CMDS:
+*: via tokenizing the entire dataset 
+dataset = load_dataset("bookcorpus/bookcorpus", split="train", streaming=False, trust_remote_code=True)
+tokenizer = AutoTokenizer.from_pretrained("google/switch-base-8")
+
+total_tokens = 0
+num_rows = 0
+
+for entry in dataset:
+    tokens = tokenizer.encode(entry["text"])
+    total_tokens += len(tokens)
+    num_rows += 1
+
+**: nvidia-smi --query-supported-clocks=memory,graphics --format=csv,noheader,nounits | \
+awk -F', ' '{
+    mem_sum += $1; 
+    graph_sum += $2; 
+    count++
+} 
+END {
+    print "Average Memory Clock Speed: " mem_sum/count " MHz"
+    print "Average Graphics Clock Speed: " graph_sum/count " MHz"
+}'
+
+***: nvidia-smi topo -m
+
+

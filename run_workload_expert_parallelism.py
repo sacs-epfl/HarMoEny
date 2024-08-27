@@ -11,8 +11,10 @@ from functools import wraps
 import nvtx
 from datetime import datetime
 import json
+import threading
 
 import torch.multiprocessing as mp
+import nvidia_smi
 
 import os
 os.environ["HF_HOME"] = "/cache"
@@ -25,6 +27,7 @@ if len(sys.argv) < 2:
 
 torch.set_num_threads(12)
 
+NUM_GPUS=4
 FIXED_LENGTH = 30
 NUM_ITERS = 25 #25
 # BATCHES_TO_TEST = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192]
@@ -36,7 +39,7 @@ if not os.path.exists(DIR):
 
 def main():
     tokenizer = AutoTokenizer.from_pretrained("google/switch-base-8")
-    model = model = SwitchTransformersEncoderModel.from_pretrained("google/switch-base-8", num_gpus=4)
+    model = SwitchTransformersEncoderModel.from_pretrained("google/switch-base-8", num_gpus=NUM_GPUS)
     model.encoder.expert_parallelise()
 
     # Add nvtx to the model
@@ -75,19 +78,56 @@ def main():
 
         return batches
 
+    
+    def collect_nvidia_stats(stop_event, output_file):
+        nvidia_smi.nvmlInit()
+        stats = []
+
+        while not stop_event.is_set():
+            for i in range(NUM_GPUS):
+                handle = nvidia_smi.nvmlDeviceGetHandleByIndex(i)
+                utilization = nvidia_smi.nvmlDeviceGetUtilizationRates(handle)
+                memory = nvidia_smi.nvmlDeviceGetMemoryInfo(handle)
+                stats.append({
+                    'timestamp': time.time(),
+                    "gpu": i,
+                    'gpu_utilization': utilization.gpu,
+                    'memory_utilization': utilization.memory,
+                    'memory_used': memory.used,
+                    'memory_total': memory.total
+                })
+            time.sleep(0.1) # Sleep is in seconds
+
+        nvidia_smi.nvmlShutdown()
+        
+        # Save stats to file
+        with open(output_file, 'w') as f:
+            f.write("timestamp,gpu,gpu_utilization,memory_utilization,memory_used,memory_total\n")
+            for stat in stats:
+                f.write(f"{stat['timestamp']},{stat['gpu']},{stat['gpu_utilization']},{stat['memory_utilization']},{stat['memory_used']},{stat['memory_total']}\n")
+
     def run_experiment(batch_size):
-        batches = create_batches(dataset, batch_size)
-        latencies = []
-        for idx, batch in enumerate(batches):
-            torch.cuda.synchronize()
-            start = time.time()
-            with torch.no_grad():
-                torch.cuda.nvtx.range_push(f"BATCH {idx}")
-                output = model(**batch)
-                torch.cuda.nvtx.range_pop()
-            torch.cuda.synchronize()
-            end = time.time()
-            latencies.append(end-start)
+        stop_event = threading.Event()
+        stats_thread = threading.Thread(target=collect_nvidia_stats, args=(stop_event, f"{DIR}/gpu_stats_{batch_size}.csv"))
+        stats_thread.start()
+
+        try:
+            batches = create_batches(dataset, batch_size)
+            latencies = []
+            for idx, batch in enumerate(batches):
+                torch.cuda.synchronize()
+                start = time.time()
+                with torch.no_grad():
+                    torch.cuda.nvtx.range_push(f"BATCH {idx}")
+                    output = model(**batch)
+                    torch.cuda.nvtx.range_pop()
+                torch.cuda.synchronize()
+                end = time.time()
+                latencies.append(end-start)
+        finally:
+            stop_event.set()
+            stats_thread.join()
+        
         return latencies
 
     output_data = {}
