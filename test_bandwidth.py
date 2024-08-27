@@ -140,64 +140,67 @@
 
 import torch
 import time
+import sys
 
 def measure_bandwidth(size, source, destination, num_warmup=5, num_repeats=10):
-    # Create tensors
-    x = torch.rand(size, device=source)
-    y = torch.empty(size, device=destination)
+    try:
+        # Create tensors
+        x = torch.rand(size, device=source)
+        y = torch.empty(size, device=destination)
 
-    # Warmup
-    for _ in range(num_warmup):
-        y.copy_(x)
-    torch.cuda.synchronize()
+        # Warmup
+        for _ in range(num_warmup):
+            y.copy_(x)
+        torch.cuda.synchronize()
 
-    # Measure time
-    start = time.perf_counter()
-    for _ in range(num_repeats):
-        y.copy_(x)
-    torch.cuda.synchronize()
-    end = time.perf_counter()
+        # Measure time
+        start = time.perf_counter()
+        for _ in range(num_repeats):
+            y.copy_(x)
+        torch.cuda.synchronize()
+        end = time.perf_counter()
 
-    # Calculate bandwidth
-    elapsed_time = (end - start) / num_repeats
-    bytes_transferred = x.nelement() * x.element_size()
-    bandwidth_gb_s = (bytes_transferred / elapsed_time) / 1e9
+        # Calculate bandwidth
+        elapsed_time = (end - start) / num_repeats
+        bytes_transferred = x.nelement() * x.element_size()
+        bandwidth_gb_s = (bytes_transferred / elapsed_time) / 1e9
 
-    return bandwidth_gb_s
+        del x
+        del y
+        if source.startswith('cuda') or destination.startswith('cuda'):
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+
+        return bandwidth_gb_s
+    except Exception as e:
+        print(f"Error: {str(e)}...")
+        exit(1)
 
 def run_bandwidth_tests():
     # Use a large size to saturate the link, e.g., 1 GB
-    size = 2**30 // 4  # 1 GB / 4 bytes per float32
+    #size = 2**30 // 4  # 1 GB / 4 bytes per float32
+    size = 2**28 // 4
 
     print(f"Testing with tensor size: {size * 4 / (1024**3):.2f} GB")
     
-    locations = ["cpu", "cuda:0", "cuda:1", "cuda:2", 
+    locations = ["cuda:0", "cuda:1", "cuda:2", 
         "cuda:3", "cuda:4", "cuda:5", "cuda:6", "cuda:7"]
 
-    print("\t" + "\t".join(locations))
+ 
     for source in locations:
-        output = []
-        for dest in locations:
-            if dest == source:
-                output.append("X")
-            output.append(f"{measure_bandwidth(size, source, dest):.2f}")
-        print(f"{source}\t" + "\t".join(output))
-        
-
-    # # CPU to GPU
-    # bw = measure_bandwidth(size, 'cpu', 'cuda:0')
-    # print(f"CPU to GPU bandwidth: {bw:.2f} GB/s")
-
-    # # GPU to CPU
-    # bw = measure_bandwidth(size, 'cuda:0', 'cpu')
-    # print(f"GPU to CPU bandwidth: {bw:.2f} GB/s")
-
-    # # GPU to GPU (if multiple GPUs are available)
-    # if torch.cuda.device_count() > 1:
-    #     bw = measure_bandwidth(size, 'cuda:0', 'cuda:1')
-    #     print(f"GPU to GPU bandwidth: {bw:.2f} GB/s")
-    # else:
-    #     print("GPU to GPU bandwidth: Not available (only one GPU detected)")
+        print(f"{source}->cpu: {measure_bandwidth(size, source, 'cpu'):.2f} GB/s")
+    for dest in locations:
+        print(f"cpu->{dest}: {measure_bandwidth(size, 'cpu', dest):.2f} GB/s")
+    
+    
+    # print("\t" + "\t".join(locations))
+    # output = []
+    # for dest in locations:
+    #     if dest == source:
+    #         output.append("X")
+    #     else:
+    #         output.append(f"{measure_bandwidth(size, source, dest):.2f}")
+    # print(f"{source}\t" + "\t".join(output))
 
 if __name__ == "__main__":
     run_bandwidth_tests()

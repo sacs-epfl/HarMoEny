@@ -1,27 +1,27 @@
 Model: GOOGLE SWITCHTRANSFORMER
 - Encoder Decoder architecture but has Encoder only version
-- 5 flavours: 8, 16, 32, 64, 128 experts
-- 12 layers: 6 of which are MoE; every second layer starting from layer 1 (0 is first).
-- hidden Size: 768
-- fp16
-- vocab size: 32,128
-- feedforward size: 3,072
-- num attention heads: 12
-- memory footprint whole model (8 experts): 1685.716992 MB 
-- memory footprint single expert: 20.97152 MB
+- 5 flavours: 8, 16, 32, 64, 128 experts (from website)
+- 12 layers: 6 of which are MoE; every second layer starting from layer 1 (0 is first) *I
+- hidden Size: 768 *I
+- fp16 *I
+- vocab size: 32,128 *I
+- feedforward size: 3,072 *I
+- num attention heads: 12 *I
+- memory footprint whole model (8 experts): 1685.716992 MB *II
+- memory footprint single expert: 20.97152 MB *II
 
 DATASET: BOOKCORPUS/BOOKCORPUS
 - Number of unique books: 7,185
 - Size of dataset: 4.85GB (from website)
-- Total number of rows: 74,004,228 *
-- Total number of tokens (unpadded): 1,508,550,096 *
-- Avg number of tokens per row: 20.384 *
+- Total number of rows: 74,004,228 *III
+- Total number of tokens (unpadded): 1,508,550,096 *III
+- Avg number of tokens per row: 20.384 *III
 
 HARDWARE:
-- 8x V100 GPU 
-    - Memory clock speed: 877 MHz **
-    - Core clock speed: 832.251 MHz **
-- Configuration ***
+- 8x V100 GPU 32GB
+    - Memory clock speed: 877 MHz *IV
+    - Core clock speed: 832.251 MHz *IV
+- Configuration *V
          GPU0   GPU1    GPU2    GPU3    GPU4    GPU5    GPU6    GPU7
     GPU0 X      NV1     NV1     NV2     NV2     SYS     SYS     SYS
     GPU1 NV1    X       NV2     NV1     SYS     NV2     SYS     SYS   
@@ -31,12 +31,55 @@ HARDWARE:
     GPU5 SYS    NV2     SYS     SYS     NV1     X       NV2     NV1
     GPU6 SYS    SYS     NV1     SYS     NV1     NV2     X       NV2
     GPU7 SYS    SYS     SYS     NV1     NV2     NV1     NV2     X
-
-
-
+- Bandwidth *VI, *VII
+        GPU0    GPU1    GPU2    GPU3    GPU4    GPU5    GPU6    GPU7    CPU
+    GPU0 X      22.47   22.48   43.28   43.48   7.16    7.20    7.17    7.84         
+    GPU1 22.47  X       43.09   22.48   7.17    43.23   7.18    7.21    7.89
+    GPU2 22.48  43.09   X       43.35   7.17    7.21    22.49   7.22    7.85
+    GPU3 43.28  22.48   43.35   X       7.20    7.22    7.19    22.50   7.67
+    GPU4 43.48  7.17    7.17    7.20    X       22.43   22.42   43.42   12.01
+    GPU5 7.16   43.23   7.21    7.22    22.43   X       43.31   22.43   12.13
+    GPU6 7.20   7.18    22.49   7.19    22.42   43.31   X       43.13   12.18
+    GPU7 7.17   7.21    7.22    22.50   43.42   22.43   43.13   X       12.19
+    CPU  8.12   8.26    8.45    8.45    8.44    8.46    8.33    8.08    X
+- Avg Bandwidth (^)
+    - SYS:       7.19 GB/s
+    - NV1:      22.46 GB/s
+    - NV2:      43.28 GB/s
+    - CPU->GPU:  8.32 GB/S
+    - GPU->CPU:  9.97 GB/s
 
 CMDS:
-*: via tokenizing the entire dataset 
+*I: 
+model = AutoModel.from_pretrained("google/switch-base-8")
+print(model)
+
+*II:
+nvidia_smi.nvmlInit()
+handle = nvidia_smi.nvmlDeviceGetHandleByIndex(0)
+
+# Full model
+pre = nvidia_smi.nvmlDeviceGetMemoryInfo(handle).used
+model = SwitchTransformersEncoderModel.from_pretrained("google/switch-base-8")
+model.to("cuda:0")
+torch.cuda.synchronize()
+post = nvidia_smi.nvmlDeviceGetMemoryInfo(handle).used
+print(f"Static memory footprint of full model: {(post-pre) / 10**6} MB")
+
+# Reset
+model.to("cpu")
+torch.cuda.empty_cache()
+torch.cuda.synchronize()
+
+# Single Expert
+pre = nvidia_smi.nvmlDeviceGetMemoryInfo(handle).used
+model.encoder.block[1].layer[1].mlp.experts.expert_0.to("cuda:0")
+torch.cuda.synchronize()
+post = nvidia_smi.nvmlDeviceGetMemoryInfo(handle).used
+print(f"Static memory footprint of a single expert: {(post-pre) / 10**6} MB")
+
+
+*III:
 dataset = load_dataset("bookcorpus/bookcorpus", split="train", streaming=False, trust_remote_code=True)
 tokenizer = AutoTokenizer.from_pretrained("google/switch-base-8")
 
@@ -48,7 +91,7 @@ for entry in dataset:
     total_tokens += len(tokens)
     num_rows += 1
 
-**: nvidia-smi --query-supported-clocks=memory,graphics --format=csv,noheader,nounits | \
+*IV: nvidia-smi --query-supported-clocks=memory,graphics --format=csv,noheader,nounits | \
 awk -F', ' '{
     mem_sum += $1; 
     graph_sum += $2; 
@@ -59,6 +102,49 @@ END {
     print "Average Graphics Clock Speed: " graph_sum/count " MHz"
 }'
 
-***: nvidia-smi topo -m
+*V: nvidia-smi topo -m
 
+*VI: CUDA_VISIBLE_DEVICES=send,receive ./build/sendrecv_perf -b 10M -e 1G -f 2 -g 2
+
+*VII:
+def measure_bandwidth(size, source, destination, num_warmup=5, num_repeats=10):
+    # Create tensors
+    x = torch.rand(size, device=source)
+    y = torch.empty(size, device=destination)
+
+    # Warmup
+    for _ in range(num_warmup):
+        y.copy_(x)
+    torch.cuda.synchronize()
+
+    # Measure time
+    start = time.perf_counter()
+    for _ in range(num_repeats):
+        y.copy_(x)
+    torch.cuda.synchronize()
+    end = time.perf_counter()
+
+    # Calculate bandwidth
+    elapsed_time = (end - start) / num_repeats
+    bytes_transferred = x.nelement() * x.element_size()
+    bandwidth_gb_s = (bytes_transferred / elapsed_time) / 1e9
+
+    del x
+    del y
+    if source.startswith('cuda') or destination.startswith('cuda'):
+        torch.cuda.empty_cache()
+        torch.cuda.synchronize()
+
+    return bandwidth_gb_s
+
+def run_bandwidth_tests():
+    size = 2**28 // 4
+    
+    locations = ["cuda:0", "cuda:1", "cuda:2", 
+        "cuda:3", "cuda:4", "cuda:5", "cuda:6", "cuda:7"]
+ 
+    for source in locations:
+        print(f"{source}->cpu: {measure_bandwidth(size, source, 'cpu'):.2f} GB/s")
+    for dest in locations:
+        print(f"cpu->{dest}: {measure_bandwidth(size, 'cpu', dest):.2f} GB/s")
 
