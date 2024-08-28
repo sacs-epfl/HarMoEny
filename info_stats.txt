@@ -54,7 +54,7 @@ RUN TIME:
     Naive   3.39225         3.40257     +0.3%
     Demeter 3.33368         3.3109      -0.68%
 
-STATS COLLECTED:
+STATS:
     gpu_utilization, memory_utilization, memory_used, memory_total
 
 CMDS:
