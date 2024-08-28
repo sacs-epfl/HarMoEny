@@ -49,6 +49,14 @@ HARDWARE:
     - CPU->GPU:  8.32 GB/S
     - GPU->CPU:  9.97 GB/s
 
+RUN TIME:
+    ALG     TIME (s/batch)  W/ STATS    overhead
+    Naive   3.39225         3.40257     +0.3%
+    Demeter 3.33368         3.3109      -0.68%
+
+STATS COLLECTED:
+    gpu_utilization, memory_utilization, memory_used, memory_total
+
 CMDS:
 *I: 
 model = AutoModel.from_pretrained("google/switch-base-8")
