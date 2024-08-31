@@ -23,7 +23,10 @@ def run_inference_workload(rank, world_size, port, scheduling_policy):
 
     tokenizer = AutoTokenizer.from_pretrained("google/switch-base-8")
     model = SwitchTransformersEncoderModel.from_pretrained("google/switch-base-8")
-    model.cuda()
+    for name, module in model.named_children():
+        if name != 'experts':
+            module.cuda()
+    model.expert_parallelise()
 
     dataset = load_dataset("bookcorpus/bookcorpus", split="train", streaming=True, trust_remote_code=True)
     sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=True, seed=49)
@@ -57,9 +60,10 @@ def run_inference_workload(rank, world_size, port, scheduling_policy):
 
 def __name__ == "__main__":
     if len(sys.argv) < 4:
-        print("usage: python3 start.py num_gpus port_number")
+        print("usage: python3 start.py num_gpus port_number scheduling_policy")
         exit(1)
 
     world_size = int(sys.argv[1])
     port = sys.argv[2]
+    scheduling_policy = sys.argv[3]
     mp.spawn(run_training, args=(world_size, port, scheduling_policy), nprocs=world_size, join=True)
