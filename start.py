@@ -44,7 +44,7 @@ def run_inference_workload(rank, world_size, port, scheduling_policy):
     setup(rank, world_size, port)
 
     tokenizer = AutoTokenizer.from_pretrained("google/switch-base-8")
-    model = SwitchTransformersEncoderModel.from_pretrained("google/switch-base-8")
+    model = SwitchTransformersEncoderModel.from_pretrained("google/switch-base-8", scheduling_policy=scheduling_policy)
     move_to_cuda_except_experts(model)
     model.expert_parallelise()
 
