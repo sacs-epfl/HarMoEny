@@ -9,9 +9,10 @@ import plotly.express as px
 
 OUTPUT_DIR = f"../plots/{datetime.today().strftime('%Y-%m-%d_%H-%M')}"
 
-if not os.path.exists(OUTPUT_DIR):
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    os.chmod(OUTPUT_DIR, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
+def create_dir_if_needed():
+    if not os.path.exists(OUTPUT_DIR):
+        os.makedirs(OUTPUT_DIR, exist_ok=True)
+        os.chmod(OUTPUT_DIR, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
 
 if len(sys.argv) < 2:
     print(f"Usage: python3 {sys.argv[0]} num_gpus paths")
@@ -31,49 +32,53 @@ def plot_e2e(dirs: [str]):
         frames.append(df)
 
     df = pd.concat(frames)
-
+    
     fig = px.line(df, x="Iteration Number", y="Latency (s)", color="name")
+    create_dir_if_needed()
     fig.write_image(f"{OUTPUT_DIR}/e2e.png")
 
 
-def plot_imbalance(dirs: [str], num_gpus: int):
+def plot_imbalance_and_oversubscription(dirs: [str], num_gpus: int):
     final_frames = []
     for _dir in dirs:
         frames = []
         for rank in range(num_gpus):
             df = pd.read_csv(f"{_dir}/{rank}/moe_l1.csv")
 
-            if rank == 0:
-                df = df[["iteration", f"gpu:{rank} comp num tokens"]]
-            else:
-                df = df[[f"gpu:{rank} comp num tokens"]]
+            df_select = df[["total number of tokens recv"]]
 
-            frames.append(df)
+            df_select = df_select.rename(columns={
+                "total number of tokens recv": str(rank)
+            })
+
+            if rank == 0:
+                df_select = pd.concat((df_select, df[["iteration"]]), axis=1)
+
+            frames.append(df_select)
             
         df_combined = pd.concat(frames, axis=1)
-        gpu_columns = [f"gpu:{i} comp num tokens" for i in range(num_gpus)]
-        df_combined["min_comp"] = df_combined[gpu_columns].min(axis=1)
-        df_combined["max_comp"] = df_combined[gpu_columns].max(axis=1)
-        df_combined["avg_comp"] = df_combined[gpu_columns].sum(axis=1) // num_gpus
-        df_combined["imbalance"] = ((df_combined["max_comp"] - df_combined["avg_comp"]) / df_combined["avg_comp"]) *100
+
+        gpu_columns = list(map(lambda x: str(x), range(num_gpus)))
+        df_combined["min"] = df_combined[gpu_columns].min(axis=1)
+        df_combined["max"] = df_combined[gpu_columns].max(axis=1)
+        df_combined["avg"] = df_combined[gpu_columns].sum(axis=1) // num_gpus
+        df_combined["imbalance"] = ((df_combined["max"] - df_combined["min"]) / df_combined["min"]) * 100
+        df_combined["oversubscription"] = ((df_combined["max"] - df_combined["avg"]) / df_combined["avg"]) *100
+
+
         data = read_data(_dir)
         df_combined["name"] = data["name"]
-        final_frames.append(df_combined[["name", "iteration", "imbalance"]])
+        final_frames.append(df_combined[["name", "iteration", "imbalance", "oversubscription"]])
     
     df = pd.concat(final_frames)
+    print(df)
 
-    fig = px.line(df, x="iteration", y="imbalance", color="name")
+    fig = px.line(df, x="iteration", y="imbalance", color="name", labels={"iteration": "Iteration Number", "imbalance": "Imbalance (relative %)"})
+    create_dir_if_needed()
     fig.write_image(f"{OUTPUT_DIR}/imbalance.png")
 
+    fig = px.line(df, x="iteration", y="oversubscription", color="name", labels={"iteration": "Iteration Number", "oversubscription": "Oversubscription (relative %)"})
+    fig.write_image(f"{OUTPUT_DIR}/oversubscription.png")
 
 plot_e2e(sys.argv[2:])
-plot_imbalance(sys.argv[2:], int(sys.argv[1]))
-
-# for _dir in sys.argv[2:]:
-#     df = pd.read_csv(f"{_dir}/0/e2e.csv")
-#     data = read_data(_dir)
-
-#     df["name"] = data["name"]
-
-#     print(df)
-
+plot_imbalance_and_oversubscription(sys.argv[2:], int(sys.argv[1]))
