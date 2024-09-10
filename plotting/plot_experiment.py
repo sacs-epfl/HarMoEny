@@ -5,6 +5,8 @@ import os
 import stat
 from datetime import datetime
 
+from theme import update_fig_to_theme
+
 import plotly.express as px
 
 OUTPUT_DIR = f"../plots/{datetime.today().strftime('%Y-%m-%d_%H-%M')}"
@@ -34,6 +36,8 @@ def plot_e2e(dirs: [str]):
     df = pd.concat(frames)
     
     fig = px.line(df, x="Iteration Number", y="Latency (s)", color="name")
+    update_fig_to_theme(fig)
+
     create_dir_if_needed()
     fig.write_image(f"{OUTPUT_DIR}/e2e.png")
 
@@ -71,13 +75,17 @@ def plot_imbalance_and_oversubscription(dirs: [str], num_gpus: int):
         final_frames.append(df_combined[["name", "iteration", "imbalance", "oversubscription"]])
     
     df = pd.concat(final_frames)
-    print(df)
 
     fig = px.line(df, x="iteration", y="imbalance", color="name", labels={"iteration": "Iteration Number", "imbalance": "Imbalance (relative %)"})
+    update_fig_to_theme(fig)
+
     create_dir_if_needed()
     fig.write_image(f"{OUTPUT_DIR}/imbalance.png")
 
+
     fig = px.line(df, x="iteration", y="oversubscription", color="name", labels={"iteration": "Iteration Number", "oversubscription": "Oversubscription (relative %)"})
+    update_fig_to_theme(fig)
+
     fig.write_image(f"{OUTPUT_DIR}/oversubscription.png")
 
 def plot_average_speedup(dirs: [str]):
@@ -115,6 +123,7 @@ def plot_average_speedup(dirs: [str]):
     fig = px.bar(avg_df, y="average speedup", labels={"index": "scheduling policy"}, text="average speedup")
     fig.update_traces(texttemplate='%{text:.2f}', textposition='outside')
     fig.update_layout(uniformtext_minsize=8, uniformtext_mode='hide')
+    update_fig_to_theme(fig)
 
     create_dir_if_needed()
     fig.write_image(f"{OUTPUT_DIR}/average_speedup.png")
