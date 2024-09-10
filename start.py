@@ -49,7 +49,7 @@ def run_inference_workload(rank, world_size, port, scheduling_policy):
     model.expert_parallelise()
 
     datasets.enable_caching()
-    dataset = load_dataset("bookcorpus/bookcorpus", split="train[:2400]", streaming=False, trust_remote_code=True)
+    dataset = load_dataset("bookcorpus/bookcorpus", split="train[:25000]", streaming=False, trust_remote_code=True)
     sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=True, seed=49)
     batch_size=250
     loader = DataLoader(dataset, sampler=sampler, batch_size=batch_size)

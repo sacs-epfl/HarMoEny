@@ -80,5 +80,45 @@ def plot_imbalance_and_oversubscription(dirs: [str], num_gpus: int):
     fig = px.line(df, x="iteration", y="oversubscription", color="name", labels={"iteration": "Iteration Number", "oversubscription": "Oversubscription (relative %)"})
     fig.write_image(f"{OUTPUT_DIR}/oversubscription.png")
 
+def plot_average_speedup(dirs: [str]):
+    frames = []
+    for _dir in dirs:
+        df = pd.read_csv(f"{_dir}/0/e2e.csv")
+        data = read_data(_dir)
+        df = df.rename(columns={"Latency (s)": data["name"]})
+        frames.append(df)
+    if len(frames) < 1:
+        print("No data to work on, finishing plot_average_speedup")
+        return
+    comb_df = frames[0]
+    for df in frames[1:]:
+        comb_df = comb_df.merge(df, on="Iteration Number", how="outer")
+
+    columns = comb_df.columns.values[1:]
+    if "naive" not in columns:
+        print("To obtain speedups you need naive values")
+        return
+
+    for col in columns:
+        if col == "naive":
+            continue
+        comb_df[col] = comb_df["naive"] / comb_df[col]
+    
+    d_avg = []
+    for col in columns:
+        d_avg.append([comb_df[col].mean()])
+    
+
+    avg_df = pd.DataFrame(d_avg, index=columns, columns=["average speedup"])
+    avg_df = avg_df.drop(index="naive")
+
+    fig = px.bar(avg_df, y="average speedup", labels={"index": "scheduling policy"}, text="average speedup")
+    fig.update_traces(texttemplate='%{text:.2f}', textposition='outside')
+    fig.update_layout(uniformtext_minsize=8, uniformtext_mode='hide')
+
+    create_dir_if_needed()
+    fig.write_image(f"{OUTPUT_DIR}/average_speedup.png")
+
 plot_e2e(sys.argv[2:])
 plot_imbalance_and_oversubscription(sys.argv[2:], int(sys.argv[1]))
+plot_average_speedup(sys.argv[2:])
