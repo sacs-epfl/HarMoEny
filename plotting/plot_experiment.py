@@ -34,7 +34,9 @@ def plot_e2e(dirs: [str]):
         frames.append(df)
 
     df = pd.concat(frames)
-    
+    df = df.sort_values(["name", "Iteration Number"])
+    df = df[df["Iteration Number"] > 3]
+
     fig = px.line(df, x="Iteration Number", y="Latency (s)", color="name")
     update_fig_to_theme(fig)
 
@@ -75,6 +77,8 @@ def plot_imbalance_and_oversubscription(dirs: [str], num_gpus: int):
         final_frames.append(df_combined[["name", "iteration", "imbalance", "oversubscription"]])
     
     df = pd.concat(final_frames)
+    df = df.sort_values(["name", "iteration"])
+    df = df[df["iteration"] > 3]
 
     fig = px.line(df, x="iteration", y="imbalance", color="name", labels={"iteration": "Iteration Number", "imbalance": "Imbalance (relative %)"})
     update_fig_to_theme(fig)
@@ -102,6 +106,8 @@ def plot_average_speedup(dirs: [str]):
     for df in frames[1:]:
         comb_df = comb_df.merge(df, on="Iteration Number", how="outer")
 
+    comb_df = comb_df[comb_df["Iteration Number"] > 3]
+
     columns = comb_df.columns.values[1:]
     if "naive" not in columns:
         print("To obtain speedups you need naive values")
@@ -119,6 +125,7 @@ def plot_average_speedup(dirs: [str]):
 
     avg_df = pd.DataFrame(d_avg, index=columns, columns=["average speedup"])
     avg_df = avg_df.drop(index="naive")
+    avg_df = avg_df.sort_index()
 
     fig = px.bar(avg_df, y="average speedup", labels={"index": "scheduling policy"}, text="average speedup")
     fig.update_traces(texttemplate='%{text:.2f}', textposition='outside')
