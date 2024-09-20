@@ -9,11 +9,17 @@ import time
 import csv
 import stat 
 import json
+import numpy as np
+
 
 import datasets
 from datasets import load_dataset
-from torch.utils.data import DataLoader, DistributedSampler
+from torch.utils.data import DataLoader, DistributedSampler, Dataset
 from transformers import AutoTokenizer, SwitchTransformersEncoderModel
+
+SEQ_LEN = 120
+BATCH_SIZE = 30
+NUM_ITERS = 15
 
 def setup(rank, world_size, port="12345"):
     os.environ["MASTER_ADDR"] = "localhost"
@@ -38,7 +44,43 @@ def move_to_cuda_except_experts(model):
             # If it's a leaf module (no children) and not part of experts, move to CUDA
             module.cuda()
 
-def run_inference_workload(rank, world_size, port, scheduling_policy):
+
+class FlexibleDataset(Dataset):
+    def __init__(self, dataset_option, tokenizer, world_size, random_seed=32):
+        self.tokenizer = tokenizer
+        self.max_length = SEQ_LEN
+        self.dataset_option = dataset_option
+        self.dataset_size = NUM_ITERS * BATCH_SIZE * world_size
+        torch.manual_seed(random_seed)
+
+        if dataset_option == "bookcorpus":
+            self.dataset = load_dataset("bookcorpus/bookcorpus", split=f"train[:{self.dataset_size}]", streaming=False, trust_remote_code=True)
+        elif dataset_option == "random":
+            self.vocab_size = len(tokenizer)
+        else:
+            raise ValueError("Invalid dataset option")
+
+    def __len__(self):
+        return self.dataset_size
+
+    def __getitem__(self, idx):
+        if self.dataset_option == "bookcorpus":
+            text = self.dataset[idx]["text"]
+            encoded = self.tokenizer(text, padding="max_length", truncation=True, max_length=self.max_length, return_tensors="pt")
+            return {k: v.squeeze(0) for k, v in encoded.items()}
+        else:  # random dataset            
+            # Generate random token IDs
+            input_ids = torch.randint(0, self.vocab_size, (self.max_length,), dtype=torch.int64)            
+            
+            # Create attention mask
+            attention_mask = torch.ones(self.max_length, dtype=torch.int64)
+            
+            return {
+                "input_ids": input_ids,
+                "attention_mask": attention_mask
+            }
+
+def run_inference_workload(rank, world_size, port, scheduling_policy, dataset):
     ROOT = f"outputs/{scheduling_policy}/{port}/{datetime.today().strftime('%Y-%m-%d_%H-%M')}"
     DIR = f"{ROOT}/{rank}"
     setup(rank, world_size, port)
@@ -49,10 +91,9 @@ def run_inference_workload(rank, world_size, port, scheduling_policy):
     model.expert_parallelise()
 
     datasets.enable_caching()
-    dataset = load_dataset("bookcorpus/bookcorpus", split="train[:25000]", streaming=False, trust_remote_code=True)
-    sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=True, seed=49)
-    batch_size=250
-    loader = DataLoader(dataset, sampler=sampler, batch_size=batch_size)
+    flexible_dataset = FlexibleDataset(dataset, tokenizer, world_size)
+    sampler = DistributedSampler(flexible_dataset, num_replicas=world_size, rank=rank, shuffle=True, seed=49)
+    loader = DataLoader(flexible_dataset, sampler=sampler, batch_size=BATCH_SIZE)
     
     latencies = []
 
@@ -60,9 +101,8 @@ def run_inference_workload(rank, world_size, port, scheduling_policy):
     with torch.no_grad():
         for batch in loader:
             start = time.time()
-            inputs = tokenizer(batch["text"], return_tensors="pt", padding=True, truncation=True)
-            inputs = {k: v.cuda() for k, v in inputs.items()}
-            outputs = model(**inputs)
+            batch = {k: v.cuda() for k, v in batch.items()}
+            outputs = model(**batch)
             end = time.time()
             latencies.append(end-start)
 
@@ -92,10 +132,11 @@ def run_inference_workload(rank, world_size, port, scheduling_policy):
 
 if __name__ == "__main__":
     if len(sys.argv) < 4:
-        print("usage: python3 start.py num_gpus port_number scheduling_policy")
+        print("usage: python3 start.py num_gpus port_number scheduling_policy dataset")
         exit(1)
 
     world_size = int(sys.argv[1])
     port = sys.argv[2]
     scheduling_policy = sys.argv[3]
-    mp.spawn(run_inference_workload, args=(world_size, port, scheduling_policy), nprocs=world_size, join=True)
+    dataset = sys.argv[4]
+    mp.spawn(run_inference_workload, args=(world_size, port, scheduling_policy, dataset), nprocs=world_size, join=True)
