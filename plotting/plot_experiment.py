@@ -44,9 +44,12 @@ def plot_e2e(dirs: [str]):
     fig.write_image(f"{OUTPUT_DIR}/e2e.png")
 
 
-def plot_imbalance_and_oversubscription(dirs: [str], num_gpus: int):
+def plot_imbalance_and_oversubscription(dirs: [str]):
     final_frames = []
     for _dir in dirs:
+        data = read_data(_dir)
+        num_gpus = int(data["world_size"])
+
         frames = []
         for rank in range(num_gpus):
             df = pd.read_csv(f"{_dir}/{rank}/moe_l1.csv")
@@ -72,7 +75,6 @@ def plot_imbalance_and_oversubscription(dirs: [str], num_gpus: int):
         df_combined["oversubscription"] = ((df_combined["max"] - df_combined["avg"]) / df_combined["avg"]) *100
 
 
-        data = read_data(_dir)
         df_combined["name"] = data["name"]
         final_frames.append(df_combined[["name", "iteration", "imbalance", "oversubscription"]])
     
@@ -158,24 +160,87 @@ def plot_overall_speedup(dirs: [str]):
     df = comb_df.sum(axis=0)
     df = df.drop(index="Iteration Number")
 
-    for col in columns:
-        if col == "deepspeed":
-            continue
-        df[col] = df["deepspeed"] / df[col]
-
-    df = df.drop(index="deepspeed")
     df = df.sort_index()
 
-    fig = px.bar(df, labels={"index": "scheduling policy", "value": "speedup"}, text="value")
-    fig.update_traces(texttemplate='%{text:.2f}', textposition='outside')
+    df_speedup = df["deepspeed"] / df
+
+    plot_df = pd.DataFrame({
+        'scheduling_policy': df.index,
+        'workload_duration': df.values,
+        'speedup': df_speedup.values,
+        'label': [f"{value:.2f} ({speedup:.2f}x)" for value, speedup in zip(df, df_speedup)]
+    })
+    plot_df['label'] = plot_df['label'].astype(str)
+
+    fig = px.bar(plot_df, 
+                 x='scheduling_policy', 
+                 y='workload_duration', 
+                 text='label',
+                 labels={"scheduling_policy": "scheduling policy", 
+                         "workload_duration": "workload duration (s)"})
+    
+    fig.update_traces(textposition='outside')
     fig.update_layout(uniformtext_minsize=8, uniformtext_mode="hide", showlegend=False)
     update_fig_to_theme(fig)
 
     create_dir_if_needed()
-    fig.write_image(f"{OUTPUT_DIR}/overall_speedup.png")    
+    fig.write_image(f"{OUTPUT_DIR}/overall_e2e.png")    
+
+def plot_throughput(dirs: [str]):
+    throughput = {"policy": [], "throughput": []}
+    for _dir in dirs:
+        df = pd.read_csv(f"{_dir}/0/e2e.csv")
+        df = df[df["Iteration Number"] > 3]
+        num_iters = len(df)
+        df = df.sum(axis=0)
+        data = read_data(_dir)
+        num_samples = int(data["world_size"]) * int(data["batch_size"]) * num_iters
+
+        throughput["policy"].append(data["name"])
+        throughput["throughput"].append(num_samples / df["Latency (s)"])
+    
+    df = pd.DataFrame(throughput)
+    deepspeed = df[df["policy"]=="deepspeed"]["throughput"].iloc[0]
+    df["labels"] = [f"{val:.2f} ({val/deepspeed:.2f}x)" for val in df["throughput"].tolist()]
+
+    fig = px.bar(df, x="policy", y="throughput", text="labels", labels={"policy": "scheduling policy"})
+    fig.update_traces(textposition='outside')
+    fig.update_layout(uniformtext_minsize=8, uniformtext_mode="hide", showlegend=False)
+    update_fig_to_theme(fig)
+
+    create_dir_if_needed()
+    fig.write_image(f"{OUTPUT_DIR}/throughput.png")
+
+def plot_maximal_batch_size(path: str):
+    df = pd.read_csv(path)
+
+    for time in df["time"].tolist():
+        df_i = df[df["time"]==time]
+        df_i = df_i.drop(columns=["time"])
+        plot_df_i = df_i.melt(var_name='policy_name', value_name='batch_size')
+        plot_df_i = plot_df_i.sort_values(by="policy_name")
+        fig = px.bar(plot_df_i,
+                title=f"Maximal batch size with {time}s requirement",
+                x="policy_name",
+                y="batch_size",
+                text="batch_size",
+                labels={"policy_name": "scheduling policy",
+                        "batch_size": "maximal batch size"})
+        fig.update_traces(textposition='outside')
+        fig.update_layout(uniformtext_minsize=8, uniformtext_mode="hide", showlegend=False)
+        update_fig_to_theme(fig)
+
+        create_dir_if_needed()
+        fig.write_image(f"{OUTPUT_DIR}/maximal_batch.png")
 
 
-plot_e2e(sys.argv[2:])
-plot_imbalance_and_oversubscription(sys.argv[2:], int(sys.argv[1]))
-plot_average_speedup(sys.argv[2:])
-plot_overall_speedup(sys.argv[2:])
+
+if len(sys.argv) == 2:
+    print("Passed a single path assuming it is a maximal batch size plotting")
+    plot_maximal_batch_size(sys.argv[1])
+else:
+    plot_e2e(sys.argv[1:])
+    plot_imbalance_and_oversubscription(sys.argv[1:])
+    plot_average_speedup(sys.argv[1:])
+    plot_overall_speedup(sys.argv[1:])
+    plot_throughput(sys.argv[1:])

@@ -18,8 +18,7 @@ from torch.utils.data import DataLoader, DistributedSampler, Dataset
 from transformers import AutoTokenizer, SwitchTransformersEncoderModel
 
 SEQ_LEN = 120
-BATCH_SIZE = 30
-NUM_ITERS = 15
+NUM_ITERS = 100
 
 def setup(rank, world_size, port="12345"):
     os.environ["MASTER_ADDR"] = "localhost"
@@ -46,11 +45,11 @@ def move_to_cuda_except_experts(model):
 
 
 class FlexibleDataset(Dataset):
-    def __init__(self, dataset_option, tokenizer, world_size, random_seed=32):
+    def __init__(self, dataset_option, tokenizer, world_size, random_seed=32, batch_size=60):
         self.tokenizer = tokenizer
         self.max_length = SEQ_LEN
         self.dataset_option = dataset_option
-        self.dataset_size = NUM_ITERS * BATCH_SIZE * world_size
+        self.dataset_size = NUM_ITERS * batch_size * world_size
         torch.manual_seed(random_seed)
 
         if dataset_option == "bookcorpus":
@@ -80,7 +79,7 @@ class FlexibleDataset(Dataset):
                 "attention_mask": attention_mask
             }
 
-def run_inference_workload(rank, world_size, port, scheduling_policy, dataset, experiment):
+def run_inference_workload(rank, world_size, port, scheduling_policy, dataset, experiment, batch_size):
     try:
         mp.current_process().name = f'Worker-{rank}'
         ROOT = f"outputs/{scheduling_policy}/{port}/{datetime.today().strftime('%Y-%m-%d_%H-%M')}"
@@ -93,18 +92,18 @@ def run_inference_workload(rank, world_size, port, scheduling_policy, dataset, e
         model.expert_parallelise()
 
         datasets.enable_caching()
-        flexible_dataset = FlexibleDataset(dataset, tokenizer, world_size)
+        flexible_dataset = FlexibleDataset(dataset, tokenizer, world_size, batch_size=batch_size)
         sampler = DistributedSampler(flexible_dataset, num_replicas=world_size, rank=rank, shuffle=True, seed=49)
-        loader = DataLoader(flexible_dataset, sampler=sampler, batch_size=BATCH_SIZE)
+        loader = DataLoader(flexible_dataset, sampler=sampler, batch_size=batch_size)
         
         model.eval()
 
         if experiment == "throughput":
-            run_throughput_experiment(model, flexible_dataset, sampler, DIR)
+            run_throughput_experiment(model, loader, flexible_dataset, sampler, DIR)
         else:
             run_standard_experiment(model, loader, DIR)
+            save_run_info(scheduling_policy, batch_size, world_size, ROOT)
 
-        save_run_info(scheduling_policy, ROOT)
     except KeyboardInterrupt:
         print(f"Worker {rank} received KeyboardInterrupt, shutting down...")
     finally:
@@ -133,50 +132,69 @@ def run_standard_experiment(model, loader, path):
         for idx, latency in enumerate(latencies):
             writer.writerow({"Iteration Number": idx, "Latency (s)": latency})
 
-def run_throughput_experiment(model, dataset, sampler, path):
-    CUTOFFS = [1.0, 2.0, 3.0]
+def run_throughput_experiment(model, loader, dataset, sampler, path):
+    warmup(model, loader)
 
-    results = []
+    print(f"Time for batch size: {run_x_times_and_get_average(model, loader)}")
 
-    for cutoff in CUTOFFS:
-        left = 0
-        right = 1000000
-        while True: # Get the right bound
-            avg = run_x_times_and_get_average(model, dataset, sampler, batch_size=right)
-            print(avg)
-            if avg > cutoff:
-                break
-            else:
-                left = right
-                right *= 2
-        print(f"Found upper bound: {right}")
-        while True: # Shrink the right bound
-            if right == left:
-                    break
-            test_size = (right + left) // 2
-            avg = run_x_times_and_get_average(model, dataset, sampler, batch_size=test_size)
-            if avg > cutoff:
-                right = test_size
-            else:
-                left = test_size
-        results.append(right)
+
+    #CUTOFFS = [1.0, 2.0, 3.0]
+    # CUTOFFS = [1.0]
+
+    # warmup(model, loader)
+
+    # results = []
+    # for cutoff in CUTOFFS:
+    #     left = 0
+    #     right = 100
+    #     while True: # Get the right bound
+    #         avg = run_x_times_and_get_average(model, dataset, sampler, batch_size=right)
+    #         if avg > cutoff:
+    #             break
+    #         else:
+    #             left = right
+    #             right *= 2
+    #     while True: # Shrink the right bound
+    #         if right == left:
+    #                 break
+    #         test_size = (right + left) // 2
+    #         test_size = max(test_size, left)
+    #         avg = run_x_times_and_get_average(model, dataset, sampler, batch_size=test_size)
+    #         if avg > cutoff:
+    #             right = test_size
+    #         else:
+    #             left = test_size
+    #     results.append(right)
     
-    print(results)
+    # create_save_dir_if_not_exist(path)
+
+    # file_path = f"{path}/throughput.csv"
+    # with open(file_path, "w") as f:
+    #     writer = csv.DictWriter(f, fieldnames=CUTOFFS)
+    #     writer.writeheader()
+    #     writer.writerow(dict(zip(CUTOFFS, results)))
 
 
-def run_x_times_and_get_average(model, dataset, sampler, times=3, batch_size=BATCH_SIZE):
-    loader = DataLoader(dataset, sampler=sampler, batch_size=batch_size)
+def warmup(model, loader):
+    NUM_WARMUP_ROUNDS = 3
+
+    itr = 0
+    for batch in loader:
+        batch = {k: v.cuda() for k, v in batch.items()}
+        outputs = model(**batch)
+        itr += 1
+        if itr == NUM_WARMUP_ROUNDS:
+            break
+
+def run_x_times_and_get_average(model, loader, times=3):
     tot_run_time = 0
-    itr = -1
+    itr = 0
     with torch.no_grad():
         for batch in loader:
             start = time.time()
             batch = {k: v.cuda() for k, v in batch.items()}
             outputs = model(**batch)
             end = time.time()
-            if itr == -1:
-                itr += 1
-                continue
             tot_run_time += end-start 
             itr += 1
             if itr == times:
@@ -188,10 +206,12 @@ def create_save_dir_if_not_exist(path):
     if not os.path.exists(path):
         os.makedirs(path, exist_ok=True)
 
-def save_run_info(scheduling_policy, path):
+def save_run_info(scheduling_policy, batch_size, world_size, path):
      with open(f"{path}/data.json", "w") as f:
         json.dump({
-            "name": scheduling_policy
+            "name": scheduling_policy,
+            "batch_size": batch_size,
+            "world_size": world_size,
         }, f)
 
 def signal_handler(sig, frame):
@@ -202,15 +222,18 @@ def signal_handler(sig, frame):
     sys.exit(0)
 
 if __name__ == "__main__":
-    if len(sys.argv) != 6:
-        print("usage: python3 start.py num_gpus port_number scheduling_policy dataset experiment")
+    if len(sys.argv) < 6:
+        print("usage: python3 start.py num_gpus port_number scheduling_policy dataset experiment [batch_size]")
         exit(1)
     world_size = int(sys.argv[1])
     port = sys.argv[2]
     scheduling_policy = sys.argv[3]
     dataset = sys.argv[4]
     experiment = sys.argv[5]
+    batch_size = 250
+    if len(sys.argv) > 6:
+        batch_size = int(sys.argv[6])
 
     signal.signal(signal.SIGINT, signal_handler)
-    mp.spawn(run_inference_workload, args=(world_size, port, scheduling_policy, dataset, experiment), nprocs=world_size, join=True)
+    mp.spawn(run_inference_workload, args=(world_size, port, scheduling_policy, dataset, experiment, batch_size), nprocs=world_size, join=True)
     
