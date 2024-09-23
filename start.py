@@ -10,7 +10,7 @@ import csv
 import stat 
 import json
 import numpy as np
-
+import signal
 
 import datasets
 from datasets import load_dataset
@@ -80,24 +80,39 @@ class FlexibleDataset(Dataset):
                 "attention_mask": attention_mask
             }
 
-def run_inference_workload(rank, world_size, port, scheduling_policy, dataset):
-    ROOT = f"outputs/{scheduling_policy}/{port}/{datetime.today().strftime('%Y-%m-%d_%H-%M')}"
-    DIR = f"{ROOT}/{rank}"
-    setup(rank, world_size, port)
+def run_inference_workload(rank, world_size, port, scheduling_policy, dataset, experiment):
+    try:
+        mp.current_process().name = f'Worker-{rank}'
+        ROOT = f"outputs/{scheduling_policy}/{port}/{datetime.today().strftime('%Y-%m-%d_%H-%M')}"
+        DIR = f"{ROOT}/{rank}"
+        setup(rank, world_size, port)
 
-    tokenizer = AutoTokenizer.from_pretrained("google/switch-base-8")
-    model = SwitchTransformersEncoderModel.from_pretrained("google/switch-base-8", scheduling_policy=scheduling_policy)
-    move_to_cuda_except_experts(model)
-    model.expert_parallelise()
+        tokenizer = AutoTokenizer.from_pretrained("google/switch-base-8")
+        model = SwitchTransformersEncoderModel.from_pretrained("google/switch-base-8", scheduling_policy=scheduling_policy)
+        move_to_cuda_except_experts(model)
+        model.expert_parallelise()
 
-    datasets.enable_caching()
-    flexible_dataset = FlexibleDataset(dataset, tokenizer, world_size)
-    sampler = DistributedSampler(flexible_dataset, num_replicas=world_size, rank=rank, shuffle=True, seed=49)
-    loader = DataLoader(flexible_dataset, sampler=sampler, batch_size=BATCH_SIZE)
-    
+        datasets.enable_caching()
+        flexible_dataset = FlexibleDataset(dataset, tokenizer, world_size)
+        sampler = DistributedSampler(flexible_dataset, num_replicas=world_size, rank=rank, shuffle=True, seed=49)
+        loader = DataLoader(flexible_dataset, sampler=sampler, batch_size=BATCH_SIZE)
+        
+        model.eval()
+
+        if experiment == "throughput":
+            run_throughput_experiment(model, flexible_dataset, sampler, DIR)
+        else:
+            run_standard_experiment(model, loader, DIR)
+
+        save_run_info(scheduling_policy, ROOT)
+    except KeyboardInterrupt:
+        print(f"Worker {rank} received KeyboardInterrupt, shutting down...")
+    finally:
+        cleanup()
+
+def run_standard_experiment(model, loader, path):
     latencies = []
-
-    model.eval()
+    
     with torch.no_grad():
         for batch in loader:
             start = time.time()
@@ -105,20 +120,12 @@ def run_inference_workload(rank, world_size, port, scheduling_policy, dataset):
             outputs = model(**batch)
             end = time.time()
             latencies.append(end-start)
-
     
-    if not os.path.exists(DIR):
-        os.makedirs(DIR, exist_ok=True)
-        os.chmod(DIR, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
+    create_save_dir_if_not_exist(path)
     
-    model.expert_save_latencies(f"{DIR}")
+    model.expert_save_latencies(f"{path}")
 
-    with open(f"{ROOT}/data.json", "w") as f:
-        json.dump({
-            "name": scheduling_policy
-        }, f)
-
-    file_path = f"{DIR}/e2e.csv"
+    file_path = f"{path}/e2e.csv"
     with open(file_path, "w") as f:
         fieldnames = ["Iteration Number", "Latency (s)"]
         writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -126,17 +133,84 @@ def run_inference_workload(rank, world_size, port, scheduling_policy, dataset):
         for idx, latency in enumerate(latencies):
             writer.writerow({"Iteration Number": idx, "Latency (s)": latency})
 
-    os.chmod(file_path, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
+def run_throughput_experiment(model, dataset, sampler, path):
+    CUTOFFS = [1.0, 2.0, 3.0]
 
-    cleanup()
+    results = []
+
+    for cutoff in CUTOFFS:
+        left = 0
+        right = 1000000
+        while True: # Get the right bound
+            avg = run_x_times_and_get_average(model, dataset, sampler, batch_size=right)
+            print(avg)
+            if avg > cutoff:
+                break
+            else:
+                left = right
+                right *= 2
+        print(f"Found upper bound: {right}")
+        while True: # Shrink the right bound
+            if right == left:
+                    break
+            test_size = (right + left) // 2
+            avg = run_x_times_and_get_average(model, dataset, sampler, batch_size=test_size)
+            if avg > cutoff:
+                right = test_size
+            else:
+                left = test_size
+        results.append(right)
+    
+    print(results)
+
+
+def run_x_times_and_get_average(model, dataset, sampler, times=3, batch_size=BATCH_SIZE):
+    loader = DataLoader(dataset, sampler=sampler, batch_size=batch_size)
+    tot_run_time = 0
+    itr = -1
+    with torch.no_grad():
+        for batch in loader:
+            start = time.time()
+            batch = {k: v.cuda() for k, v in batch.items()}
+            outputs = model(**batch)
+            end = time.time()
+            if itr == -1:
+                itr += 1
+                continue
+            tot_run_time += end-start 
+            itr += 1
+            if itr == times:
+                break
+    
+    return tot_run_time / times
+
+def create_save_dir_if_not_exist(path):
+    if not os.path.exists(path):
+        os.makedirs(path, exist_ok=True)
+
+def save_run_info(scheduling_policy, path):
+     with open(f"{path}/data.json", "w") as f:
+        json.dump({
+            "name": scheduling_policy
+        }, f)
+
+def signal_handler(sig, frame):
+    print("Main process received Ctrl+C! Terminating all child processes...")
+    for child in mp.active_children():
+         print(f"Terminating child process PID: {child.pid}")
+         child.terminate()
+    sys.exit(0)
 
 if __name__ == "__main__":
-    if len(sys.argv) < 4:
-        print("usage: python3 start.py num_gpus port_number scheduling_policy dataset")
+    if len(sys.argv) != 6:
+        print("usage: python3 start.py num_gpus port_number scheduling_policy dataset experiment")
         exit(1)
-
     world_size = int(sys.argv[1])
     port = sys.argv[2]
     scheduling_policy = sys.argv[3]
     dataset = sys.argv[4]
-    mp.spawn(run_inference_workload, args=(world_size, port, scheduling_policy, dataset), nprocs=world_size, join=True)
+    experiment = sys.argv[5]
+
+    signal.signal(signal.SIGINT, signal_handler)
+    mp.spawn(run_inference_workload, args=(world_size, port, scheduling_policy, dataset, experiment), nprocs=world_size, join=True)
+    

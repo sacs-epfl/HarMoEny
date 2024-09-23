@@ -4,13 +4,12 @@
 # Running environment
 ```bash
 ./start_image.sh
-cd transformers
-pip install -e .
-cd ..
 ```
 
 # Running experiment
-`python3 start.py num_gpus port_num policy dataset_name`
+```bash
+python3 start.py num_gpus port_num policy dataset_name experiment_name
+```
 
 # Plotting
 ```bash
