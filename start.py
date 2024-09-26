@@ -53,18 +53,27 @@ class FlexibleDataset(Dataset):
         torch.manual_seed(random_seed)
 
         if dataset_option == "bookcorpus":
-            self.dataset = load_dataset("bookcorpus/bookcorpus", split=f"train[:{self.dataset_size}]", streaming=False, trust_remote_code=True)
+            self.dataset = load_dataset("bookcorpus/bookcorpus", split=f"train[:{self.dataset_size}]", streaming=False, trust_remote_code=True, cache_dir="/cache")
+        elif dataset_option == "wikitext":
+            self.dataset = load_dataset("wikitext", "wikitext-103-raw-v1", split=f"train[:{self.dataset_size}]", streaming=False, cache_dir="/cache")
+        elif dataset_option == "sst2":
+            self.dataset = load_dataset("glue", "sst2", split=f"train[:{self.dataset_size}]", streaming=False, cache_dir="/cache")
         elif dataset_option == "random":
             self.vocab_size = len(tokenizer)
         else:
             raise ValueError("Invalid dataset option")
 
+        self.dataset_size = min(self.dataset_size, len(self.dataset))
+
     def __len__(self):
         return self.dataset_size
 
     def __getitem__(self, idx):
-        if self.dataset_option == "bookcorpus":
-            text = self.dataset[idx]["text"]
+        if self.dataset_option != "random":
+            if self.dataset_option == "bookcorpus" or self.dataset_option == "wikitext":
+                text = self.dataset[idx]["text"]
+            elif self.dataset_option == "sst2":
+                text = self.dataset[idx]["sentence"]
             encoded = self.tokenizer(text, padding="max_length", truncation=True, max_length=self.max_length, return_tensors="pt")
             return {k: v.squeeze(0) for k, v in encoded.items()}
         else:  # random dataset            
@@ -86,8 +95,8 @@ def run_inference_workload(rank, world_size, port, scheduling_policy, dataset, e
         DIR = f"{ROOT}/{rank}"
         setup(rank, world_size, port)
 
-        tokenizer = AutoTokenizer.from_pretrained("google/switch-base-8")
-        model = SwitchTransformersEncoderModel.from_pretrained("google/switch-base-8", scheduling_policy=scheduling_policy)
+        tokenizer = AutoTokenizer.from_pretrained("google/switch-base-8", cache_dir="/cache")
+        model = SwitchTransformersEncoderModel.from_pretrained("google/switch-base-8", scheduling_policy=scheduling_policy, cache_dir="/cache")
         move_to_cuda_except_experts(model)
         model.expert_parallelise()
 
@@ -102,7 +111,7 @@ def run_inference_workload(rank, world_size, port, scheduling_policy, dataset, e
             run_throughput_experiment(model, loader, flexible_dataset, sampler, DIR)
         else:
             run_standard_experiment(model, loader, DIR)
-            save_run_info(scheduling_policy, batch_size, world_size, ROOT)
+            save_run_info(scheduling_policy, batch_size, world_size, dataset, ROOT)
 
     except KeyboardInterrupt:
         print(f"Worker {rank} received KeyboardInterrupt, shutting down...")
@@ -206,12 +215,13 @@ def create_save_dir_if_not_exist(path):
     if not os.path.exists(path):
         os.makedirs(path, exist_ok=True)
 
-def save_run_info(scheduling_policy, batch_size, world_size, path):
+def save_run_info(scheduling_policy, batch_size, world_size, dataset, path):
      with open(f"{path}/data.json", "w") as f:
         json.dump({
             "name": scheduling_policy,
             "batch_size": batch_size,
             "world_size": world_size,
+            "dataset": dataset,
         }, f)
 
 def signal_handler(sig, frame):

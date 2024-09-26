@@ -203,7 +203,8 @@ def plot_throughput(dirs: [str]):
     deepspeed = df[df["policy"]=="deepspeed"]["throughput"].iloc[0]
     df["labels"] = [f"{val:.2f} ({val/deepspeed:.2f}x)" for val in df["throughput"].tolist()]
 
-    fig = px.bar(df, x="policy", y="throughput", text="labels", labels={"policy": "scheduling policy"})
+    fig = px.bar(df, x="policy", y="throughput", text="labels", 
+        labels={"policy": "scheduling policy", "throughput": "throughput (reqs/s)"})
     fig.update_traces(textposition='outside')
     fig.update_layout(uniformtext_minsize=8, uniformtext_mode="hide", showlegend=False)
     update_fig_to_theme(fig)
@@ -234,13 +235,50 @@ def plot_maximal_batch_size(path: str):
         fig.write_image(f"{OUTPUT_DIR}/maximal_batch.png")
 
 
+def plot_speedup_across_datasets(dirs: [str]):
+    values = []
+
+    for _dir in dirs:
+        df = pd.read_csv(f"{_dir}/0/e2e.csv")
+        df = df[df["Iteration Number"] > 3]
+        df = df.sum(axis=0)
+        data = read_data(_dir)
+        values.append({
+            "dataset": data["dataset"],
+            "policy": data["name"],
+            "time": df["Latency (s)"]
+        })
+
+    df = pd.DataFrame(values)
+    datasets = df["dataset"].unique()
+    df['speedup'] = float('nan')
+    for dataset in datasets:
+        deepspeed_value = df[(df["dataset"] == dataset) & (df["policy"] == "deepspeed")]["time"].iloc[0]
+        speedup_values = deepspeed_value / df[df["dataset"] == dataset]["time"]
+        df.loc[df["dataset"] == dataset, "speedup"] = speedup_values
+    
+    
+    df["labels"] = [f"{val:.2f}" for val in df["speedup"].tolist()]
+    fig = px.scatter(df, x="policy", y="speedup", color="dataset", text="labels")
+    fig.update_traces(textposition='middle right', marker_size=20)
+    update_fig_to_theme(fig)
+
+    create_dir_if_needed()
+    fig.write_image(f"{OUTPUT_DIR}/speedup_across_datasets.png")
+
 
 if len(sys.argv) == 2:
     print("Passed a single path assuming it is a maximal batch size plotting")
     plot_maximal_batch_size(sys.argv[1])
 else:
-    plot_e2e(sys.argv[1:])
-    plot_imbalance_and_oversubscription(sys.argv[1:])
-    plot_average_speedup(sys.argv[1:])
-    plot_overall_speedup(sys.argv[1:])
-    plot_throughput(sys.argv[1:])
+    plotting_type = sys.argv[1]
+    if plotting_type == "single":
+        plot_e2e(sys.argv[2:])
+        plot_imbalance_and_oversubscription(sys.argv[2:])
+        plot_average_speedup(sys.argv[2:])
+        plot_overall_speedup(sys.argv[2:])
+        plot_throughput(sys.argv[2:])
+    elif plotting_type == "dataset":
+        plot_speedup_across_datasets(sys.argv[2:])
+    else:
+        print("No plotting type of that name")
