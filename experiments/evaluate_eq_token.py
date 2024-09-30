@@ -46,23 +46,29 @@ def get_average_time_for_num_tokens(num_tokens_expert_0, num_tokens_expert_1=0):
     
     return _sum / AVG_OVER_NUM_ITERS
 
+def predict_time(num_toks):
+    return 0.0007344968149494803 * num_toks + 0.12108967086107736
+
 def test_one():
     result = get_average_time_for_num_tokens(50, 50)
     result_eq = get_average_time_for_num_tokens(100+eq)
 
     print(f"{result} vs {result_eq}: diff {result-result_eq}")
+    print(f"predict: {predict_time(50)+predict_time(50)}")
 
 def test_two():
     result = get_average_time_for_num_tokens(100, 50)
     result_eq = get_average_time_for_num_tokens(150+eq)
 
     print(f"{result} vs {result_eq}: diff {result-result_eq}")
+    print(f"predict: {predict_time(100)+predict_time(50)}")
 
 def test_three():
     result = get_average_time_for_num_tokens(75, 75)
     result_eq = get_average_time_for_num_tokens(150+eq)
 
     print(f"{result} vs {result_eq}: diff {result-result_eq}")
+    print(f"predict: {predict_time(75)+predict_time(75)}")
 
 test_one()
 test_two()
