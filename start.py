@@ -12,6 +12,7 @@ import json
 import numpy as np
 import signal
 import argparse
+import math
 
 import datasets
 from datasets import load_dataset
@@ -34,7 +35,7 @@ parser.add_argument("-p", "--port", default="1234", type=str)
 parser.add_argument("-s", "--schedule", default="deepspeed", type=str)
 parser.add_argument("-d", "--dataset", default="sst2", type=str)
 parser.add_argument("-bs", "--batch_size", default=250, type=int)
-parser.add_argument("-e", "--experiment", default="standard", type=str)
+parser.add_argument("-x", "--experiment", default="standard", type=str)
 parser.add_argument("-r", "--enable_rebalancing", default=True, type=str2bool)
 parser.add_argument("-rf", "--rebalancing_frequency", default=15, type=int)
 parser.add_argument("-me", "--max_loaded_experts", default=2, type=int)
@@ -43,7 +44,7 @@ parser.add_argument("-e", "--number_experts", default=8, type=int)
 args = parser.parse_args()
 
 # Max loaded experts must be greater than or equal to EP size
-if args.max_loaded_experts < ceil(args.number_experts / args.world):
+if args.max_loaded_experts < math.ceil(args.number_experts / args.world):
     print("The max loaded experts must be greater than the expert parallel size")
     exit(1)
 

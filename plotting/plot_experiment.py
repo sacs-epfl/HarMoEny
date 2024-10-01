@@ -200,6 +200,11 @@ def plot_throughput(dirs: [str]):
         throughput["throughput"].append(num_samples / df["Latency (s)"])
     
     df = pd.DataFrame(throughput)
+
+    if len(df[df["policy"]=="deepspeed"]) == 0:
+        print("To obtain throughput you need deepspeed values")
+        return
+
     deepspeed = df[df["policy"]=="deepspeed"]["throughput"].iloc[0]
     df["labels"] = [f"{val:.2f} ({val/deepspeed:.2f}x)" for val in df["throughput"].tolist()]
 
