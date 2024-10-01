@@ -36,8 +36,20 @@ parser.add_argument("-d", "--dataset", default="sst2", type=str)
 parser.add_argument("-bs", "--batch_size", default=250, type=int)
 parser.add_argument("-e", "--experiment", default="standard", type=str)
 parser.add_argument("-r", "--enable_rebalancing", default=True, type=str2bool)
+parser.add_argument("-rf", "--rebalancing_frequency", default=15, type=int)
+parser.add_argument("-me", "--max_loaded_experts", default=2, type=int)
+parser.add_argument("-e", "--number_experts", default=8, type=int)
 
 args = parser.parse_args()
+
+# Max loaded experts must be greater than or equal to EP size
+if args.max_loaded_experts < ceil(args.number_experts / args.world):
+    print("The max loaded experts must be greater than the expert parallel size")
+    exit(1)
+
+if args.number_experts not in [8, 16, 32, 64, 128, 256]:
+    print(f"There is no model with {args.number_experts} experts")
+    exit(1)
 
 def setup(rank):
     os.environ["MASTER_ADDR"] = "localhost"
@@ -115,7 +127,13 @@ def run_inference_workload(rank):
         setup(rank)
 
         tokenizer = AutoTokenizer.from_pretrained("google/switch-base-8", cache_dir="/cache")
-        model = SwitchTransformersEncoderModel.from_pretrained("google/switch-base-8", scheduling_policy=args.schedule, enable_rebalancing=args.enable_rebalancing, cache_dir="/cache")
+        model = SwitchTransformersEncoderModel.from_pretrained(
+            f"google/switch-base-{args.number_experts}", 
+            scheduling_policy=args.schedule, 
+            enable_rebalancing=args.enable_rebalancing, 
+            rebalancing_frequency=args.rebalancing_frequency,
+            max_loaded_experts=args.max_loaded_experts,
+            cache_dir="/cache")
         move_to_cuda_except_experts(model)
         model.expert_parallelise()
 
