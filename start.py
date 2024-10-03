@@ -44,6 +44,7 @@ parser.add_argument("-rf", "--rebalancing_frequency", default=15, type=int)
 parser.add_argument("-me", "--max_loaded_experts", default=2, type=int)
 parser.add_argument("-e", "--num_experts", default=8, type=int)
 parser.add_argument("-mt", "--model_type", default="encoder-decoder", type=str)
+parser.add_argument("-pa", "--path", default="outputs", type=str, help="Specify where to save path")
 
 args = parser.parse_args()
 
@@ -152,8 +153,6 @@ class FlexibleDataset(Dataset):
 def run_inference_workload(rank):
     try:
         mp.current_process().name = f'Worker-{rank}'
-        ROOT = f"outputs/{args.schedule}/{args.port}/{datetime.today().strftime('%Y-%m-%d_%H-%M')}"
-        DIR = f"{ROOT}/{rank}"
         setup(rank)
 
         tokenizer = AutoTokenizer.from_pretrained("google/switch-base-8", cache_dir="/cache")
@@ -185,8 +184,8 @@ def run_inference_workload(rank):
         model.eval()
 
         if args.experiment == "standard":
-            run_standard_experiment(model, tokenizer, loader, DIR)
-            save_run_info(ROOT)
+            run_standard_experiment(model, tokenizer, loader, f"{args.path}/{rank}")
+            save_run_info(args.path)
         else:
             print(f"That experiment, {args.experiment}, is not yet implemented")
             exit(1)
