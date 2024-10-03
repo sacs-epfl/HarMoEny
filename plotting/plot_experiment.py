@@ -240,7 +240,7 @@ def plot_maximal_batch_size(path: str):
         fig.write_image(f"{OUTPUT_DIR}/maximal_batch.png")
 
 
-def plot_speedup_across_datasets(dirs: [str]):
+def plot_speedup_across_metric(metric: str, dirs: [str]):
     values = []
 
     for _dir in dirs:
@@ -249,28 +249,97 @@ def plot_speedup_across_datasets(dirs: [str]):
         df = df.sum(axis=0)
         data = read_data(_dir)
         values.append({
-            "dataset": data["dataset"],
+            "metric": data[metric],
             "policy": data["name"],
             "time": df["Latency (s)"]
         })
 
     df = pd.DataFrame(values)
-    datasets = df["dataset"].unique()
+    metrics = df["metric"].unique()
     df['speedup'] = float('nan')
-    for dataset in datasets:
-        deepspeed_value = df[(df["dataset"] == dataset) & (df["policy"] == "deepspeed")]["time"].iloc[0]
-        speedup_values = deepspeed_value / df[df["dataset"] == dataset]["time"]
-        df.loc[df["dataset"] == dataset, "speedup"] = speedup_values
+    for m in metrics:
+        deepspeed_value = df[(df["metric"] == m) & (df["policy"] == "deepspeed")]["time"].iloc[0]
+        speedup_values = deepspeed_value / df[df["metric"] == m]["time"]
+        df.loc[df["metric"] == m, "speedup"] = speedup_values
     
-    
+    df = df.sort_values("policy", axis=0)
     df["labels"] = [f"{val:.2f}" for val in df["speedup"].tolist()]
-    fig = px.scatter(df, x="policy", y="speedup", color="dataset", text="labels")
+    fig = px.scatter(df, x="policy", y="speedup", color="metric", text="labels", labels={"metric": metric})
     fig.update_traces(textposition='middle right', marker_size=20)
     update_fig_to_theme(fig)
 
     create_dir_if_needed()
-    fig.write_image(f"{OUTPUT_DIR}/speedup_across_datasets.png")
+    fig.write_image(f"{OUTPUT_DIR}/speedup_across_{metric}.png")
 
+def plot_imbalance_and_oversubscription_across_metric(metric: str, dirs: [str]):
+    values = []
+
+    for _dir in dirs:
+        data = read_data(_dir)
+
+        interm2 = []
+
+        for z in [1,3,5,7,9,11]: 
+            interm = []
+
+            ranks = list(range(int(data["world_size"])))
+
+            for i in ranks:
+                df = pd.read_csv(f"{_dir}/{i}/moe_l{z}.csv")
+                df = df[df["iteration"] > 3]
+
+                df = df[["total number of tokens recv"]]
+                df = df.rename(columns={"total number of tokens recv": i})
+
+                interm.append(df)
+            
+            df = interm[0]
+            for _d in interm[1:]:
+                df = df.join(_d)
+            
+            df["max"] = df[ranks].max(axis=1)
+            df["min"] = df[ranks].min(axis=1)
+            df["avg"] = df[ranks].mean(axis=1)
+
+            df["imbalance"] = ((df["max"] - df["min"]) / df["min"]) * 100
+            df["oversubscription"] = ((df["max"] - df["avg"]) / df["avg"]) * 100
+
+
+            interm2.append({
+                "layer": z,
+                "imbalance": df["imbalance"].mean(axis=0),
+                "oversubscription": df["oversubscription"].mean(axis=0),
+            })
+        
+        df = pd.DataFrame(interm2)
+
+        values.append({
+            "metric": data[metric],
+            "policy": data["name"],
+            "imbalance": df["imbalance"].mean(axis=0),
+            "oversubscription": df["oversubscription"].mean(axis=0)
+        })
+
+    df = pd.DataFrame(values)
+
+    df = df.sort_values("policy", axis=0)
+
+    df["labels_imbalance"] = [f"{val:.2f}" for val in df["imbalance"].tolist()]
+    df["labels_oversubscription"] = [f"{val:.2f}" for val in df["oversubscription"].tolist()]
+    
+    fig = px.scatter(df, x="policy", y="imbalance", color="metric", text="labels_imbalance", labels={"metric": metric})
+    fig.update_traces(textposition='middle right', marker_size=20)
+    update_fig_to_theme(fig)
+
+    create_dir_if_needed()
+    fig.write_image(f"{OUTPUT_DIR}/imbalance_across_{metric}.png")
+
+    fig = px.scatter(df, x="policy", y="oversubscription", color="metric", text="labels_oversubscription")
+    fig.update_traces(textposition='middle right', marker_size=20)
+    update_fig_to_theme(fig)
+
+    create_dir_if_needed()
+    fig.write_image(f"{OUTPUT_DIR}/oversubscription_across_{metric}.png")
 
 if len(sys.argv) == 2:
     print("Passed a single path assuming it is a maximal batch size plotting")
@@ -283,7 +352,9 @@ else:
         plot_average_speedup(sys.argv[2:])
         plot_overall_speedup(sys.argv[2:])
         plot_throughput(sys.argv[2:])
-    elif plotting_type == "dataset":
-        plot_speedup_across_datasets(sys.argv[2:])
+    elif plotting_type == "metric":
+        metric = sys.argv[2]
+        plot_speedup_across_metric(metric, sys.argv[3:])
+        plot_imbalance_and_oversubscription_across_metric(metric, sys.argv[3:])
     else:
         print("No plotting type of that name")

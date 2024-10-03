@@ -39,7 +39,7 @@ parser.add_argument("-s", "--schedule", default="deepspeed", type=str)
 parser.add_argument("-d", "--dataset", default="sst2", type=str)
 parser.add_argument("-bs", "--batch_size", default=250, type=int, help="Batch size per GPU")
 parser.add_argument("-x", "--experiment", default="standard", type=str)
-parser.add_argument("-r", "--enable_rebalancing", default=True, type=str2bool)
+parser.add_argument("-r", "--enable_rebalancing", default=False, type=str2bool)
 parser.add_argument("-rf", "--rebalancing_frequency", default=15, type=int)
 parser.add_argument("-me", "--max_loaded_experts", default=2, type=int)
 parser.add_argument("-e", "--num_experts", default=8, type=int)
@@ -105,7 +105,7 @@ class FlexibleDataset(Dataset):
         elif self.dataset_option == "sst2":
             self.dataset = load_dataset("glue", "sst2", split=f"train[:{DESIRED_DATASET_SIZE}]", streaming=False, cache_dir="/cache")
         elif self.dataset_option == "wmt19":
-            self.dataset = load_dataset("wmt/wmt19", "cs-en", split=f"train[:{DESIRED_DATASET_SIZE}]", streaming=False, cache_dir="/cache")
+            self.dataset = load_dataset("wmt/wmt19", "en-de", split=f"train[:{DESIRED_DATASET_SIZE}]", streaming=False, cache_dir="/cache")
         elif self.dataset_option == "random":
             pass
         else:
@@ -125,7 +125,7 @@ class FlexibleDataset(Dataset):
         elif self.dataset_option == "sst2":
             encoder = "summarize: " + self.dataset[idx]["sentence"]
         elif self.dataset_option == "wmt19":
-            encoder = "translate Czech to English: " + self.dataset[idx]["translation"]["cs"]
+            encoder = "translate English to German: " + self.dataset[idx]["translation"]["en"]
         elif self.dataset_option == "random":
             encoder = ["summarize:"]
             vocab_size = self.tokenizer.vocab_size
@@ -153,6 +153,7 @@ class FlexibleDataset(Dataset):
 def run_inference_workload(rank):
     try:
         mp.current_process().name = f'Worker-{rank}'
+        ROOT = f"{args.path}/{datetime.today().strftime('%Y-%m-%d_%H-%M')}"
         setup(rank)
 
         tokenizer = AutoTokenizer.from_pretrained("google/switch-base-8", cache_dir="/cache")
@@ -184,8 +185,8 @@ def run_inference_workload(rank):
         model.eval()
 
         if args.experiment == "standard":
-            run_standard_experiment(model, tokenizer, loader, f"{args.path}/{rank}")
-            save_run_info(args.path)
+            run_standard_experiment(model, tokenizer, loader, f"{ROOT}/{rank}")
+            save_run_info(ROOT)
         else:
             print(f"That experiment, {args.experiment}, is not yet implemented")
             exit(1)
