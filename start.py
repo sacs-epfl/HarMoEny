@@ -14,6 +14,7 @@ import numpy as np
 import signal
 import argparse
 import math
+import random
 
 import datasets
 from datasets import load_dataset
@@ -30,29 +31,39 @@ parser = argparse.ArgumentParser(
 )
 
 parser.add_argument("-sl", "--seq_len", default=120, type=int)
-parser.add_argument("-ni", "--num_iters", default=100, type=int)
+parser.add_argument("-ni", "--num_iters", default=0, type=int)
+parser.add_argument("-ns", "--num_samples", default=0, type=int, help="Number of samples per GPU")
 parser.add_argument("-w", "--world", default=torch.cuda.device_count(), type=int)
 parser.add_argument("-p", "--port", default="1234", type=str)
 parser.add_argument("-s", "--schedule", default="deepspeed", type=str)
 parser.add_argument("-d", "--dataset", default="sst2", type=str)
-parser.add_argument("-bs", "--batch_size", default=250, type=int)
+parser.add_argument("-bs", "--batch_size", default=250, type=int, help="Batch size per GPU")
 parser.add_argument("-x", "--experiment", default="standard", type=str)
 parser.add_argument("-r", "--enable_rebalancing", default=True, type=str2bool)
 parser.add_argument("-rf", "--rebalancing_frequency", default=15, type=int)
 parser.add_argument("-me", "--max_loaded_experts", default=2, type=int)
-parser.add_argument("-e", "--number_experts", default=8, type=int)
+parser.add_argument("-e", "--num_experts", default=8, type=int)
 parser.add_argument("-mt", "--model_type", default="encoder-decoder", type=str)
 
 args = parser.parse_args()
 
 # Max loaded experts must be greater than or equal to EP size
-if args.max_loaded_experts < math.ceil(args.number_experts / args.world):
+if args.max_loaded_experts < math.ceil(args.num_experts / args.world):
     print("The max loaded experts must be greater than the expert parallel size")
     exit(1)
 
-if args.number_experts not in [8, 16, 32, 64, 128, 256]:
-    print(f"There is no model with {args.number_experts} experts")
+if args.num_experts not in [8, 16, 32, 64, 128, 256]:
+    print(f"There is no model with {args.num_experts} experts")
     exit(1)
+
+if args.num_iters == 0 and args.num_samples == 0:
+    print("You must either specify --num_iters or --num_samples")
+    exit(1)
+
+if args.num_iters != 0:
+    DESIRED_DATASET_SIZE = args.num_iters * args.batch_size * args.world
+else:
+    DESIRED_DATASET_SIZE = args.num_samples * args.world
 
 def setup(rank):
     os.environ["MASTER_ADDR"] = "localhost"
@@ -84,61 +95,59 @@ class FlexibleDataset(Dataset):
         self.model_config = model.config
         self.max_length = args.seq_len
         self.dataset_option = args.dataset
-        self.dataset_size = args.num_iters * args.batch_size * args.world
         torch.manual_seed(random_seed)
 
         if self.dataset_option == "bookcorpus":
-            self.dataset = load_dataset("bookcorpus/bookcorpus", split=f"train[:{self.dataset_size}]", streaming=False, trust_remote_code=True, cache_dir="/cache")
+            self.dataset = load_dataset("bookcorpus/bookcorpus", split=f"train[:{DESIRED_DATASET_SIZE}]", streaming=False, trust_remote_code=True, cache_dir="/cache")
         elif self.dataset_option == "wikitext":
-            self.dataset = load_dataset("wikitext", "wikitext-103-raw-v1", split=f"train[:{self.dataset_size}]", streaming=False, cache_dir="/cache")
+            self.dataset = load_dataset("wikitext", "wikitext-103-raw-v1", split=f"train[:{DESIRED_DATASET_SIZE}]", streaming=False, cache_dir="/cache")
         elif self.dataset_option == "sst2":
-            self.dataset = load_dataset("glue", "sst2", split=f"train[:{self.dataset_size}]", streaming=False, cache_dir="/cache")
+            self.dataset = load_dataset("glue", "sst2", split=f"train[:{DESIRED_DATASET_SIZE}]", streaming=False, cache_dir="/cache")
         elif self.dataset_option == "wmt19":
-            self.dataset = load_dataset("wmt/wmt19", "cs-en", split=f"train[:{self.dataset_size}]", streaming=False, cache_dir="/cache")
+            self.dataset = load_dataset("wmt/wmt19", "cs-en", split=f"train[:{DESIRED_DATASET_SIZE}]", streaming=False, cache_dir="/cache")
         elif self.dataset_option == "random":
-            self.vocab_size = len(tokenizer)
+            pass
         else:
             raise ValueError("Invalid dataset option")
 
-        self.dataset_size = min(self.dataset_size, len(self.dataset))
+        if self.dataset_option != "random":
+            self.dataset_size = len(self.dataset)
+        else:
+            self.dataset_size = DESIRED_DATASET_SIZE
 
     def __len__(self):
         return self.dataset_size
 
     def __getitem__(self, idx):
-        if self.dataset_option != "random":
-            # TODO maybe make random create random string?
+        if self.dataset_option == "bookcorpus" or self.dataset_option == "wikitext":
+            encoder = "summarize: " + self.dataset[idx]["text"]
+        elif self.dataset_option == "sst2":
+            encoder = "summarize: " + self.dataset[idx]["sentence"]
+        elif self.dataset_option == "wmt19":
+            encoder = "translate Czech to English: " + self.dataset[idx]["translation"]["cs"]
+        elif self.dataset_option == "random":
+            encoder = ["summarize:"]
+            vocab_size = self.tokenizer.vocab_size
 
-            if self.dataset_option == "bookcorpus" or self.dataset_option == "wikitext":
-                encoder = "summarize: " + self.dataset[idx]["text"]
-            elif self.dataset_option == "sst2":
-                encoder = "summarize: " + self.dataset[idx]["sentence"]
-            elif self.dataset_option == "wmt19":
-                encoder = "translate Czech to English: " + self.dataset[idx]["translation"]["cs"]
-            
-            encoder_tokenized = self.tokenizer(encoder, padding="max_length", truncation=True, max_length=self.max_length, return_tensors="pt")
-            
-            dic = {
-                "input_ids": encoder_tokenized["input_ids"].squeeze(0),
-                "attention_mask": encoder_tokenized["attention_mask"].squeeze(0),
-            }
+            for _ in range(args.seq_len):
+                # Add a random token to the array
+                random_token_id = random.randint(0, vocab_size-1)
+                random_token = self.tokenizer.decode(random_token_id)
+                encoder.append(random_token)
 
-            if args.model_type == "encoder-decoder":
-                dic["decoder_input_ids"] = torch.tensor([self.model_config.pad_token_id])
+            encoder = " ".join(encoder)
 
-            return dic
-        else:  # random dataset   
-            # TODO fix for encoder-decoder         
-            # Generate random token IDs
-            input_ids = torch.randint(0, self.vocab_size, (self.max_length,), dtype=torch.int64)            
-            
-            # Create attention mask
-            attention_mask = torch.ones(self.max_length, dtype=torch.int64)
-            
-            return {
-                "input_ids": input_ids,
-                "attention_mask": attention_mask
-            }
+        encoder_tokenized = self.tokenizer(encoder, padding="max_length", truncation=True, max_length=self.max_length, return_tensors="pt")
+        
+        dic = {
+            "input_ids": encoder_tokenized["input_ids"].squeeze(0),
+            "attention_mask": encoder_tokenized["attention_mask"].squeeze(0),
+        }
+
+        if args.model_type == "encoder-decoder":
+            dic["decoder_input_ids"] = torch.tensor([self.model_config.pad_token_id])
+
+        return dic
 
 def run_inference_workload(rank):
     try:
@@ -158,7 +167,7 @@ def run_inference_workload(rank):
             exit(1)
         
         model = _class.from_pretrained(
-            f"google/switch-base-{args.number_experts}", 
+            f"google/switch-base-{args.num_experts}", 
             scheduling_policy=args.schedule, 
             enable_rebalancing=args.enable_rebalancing, 
             rebalancing_frequency=args.rebalancing_frequency,
@@ -253,6 +262,15 @@ def save_run_info(path):
             "batch_size": args.batch_size,
             "world_size": args.world,
             "dataset": args.dataset,
+            "seq_len": args.seq_len,
+            "num_iters": args.num_iters,
+            "num_samples": args.num_samples,
+            "port": args.port,
+            "experiment": args.experiment,
+            "enable_rebalancing": args.enable_rebalancing,
+            "max_loaded_experts": args.max_loaded_experts,
+            "num_experts": args.num_experts,
+            "model_type": args.model_type
         }, f)
 
 def signal_handler(sig, frame):
