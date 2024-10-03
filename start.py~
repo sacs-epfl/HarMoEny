@@ -1,5 +1,4 @@
 import torch
-import torch.nn.functional as F
 import torch.nn as nn
 import torch.distributed as dist
 import torch.multiprocessing as mp 
@@ -18,7 +17,7 @@ import math
 import datasets
 from datasets import load_dataset
 from torch.utils.data import DataLoader, DistributedSampler, Dataset
-from transformers import AutoTokenizer, SwitchTransformersEncoderModel, SwitchTransformersForConditionalGeneration
+from transformers import AutoTokenizer, SwitchTransformersEncoderModel
 
 def str2bool(s):
     return s.lower() in ["yes", "y", "true", "t"]
@@ -41,7 +40,6 @@ parser.add_argument("-r", "--enable_rebalancing", default=True, type=str2bool)
 parser.add_argument("-rf", "--rebalancing_frequency", default=15, type=int)
 parser.add_argument("-me", "--max_loaded_experts", default=2, type=int)
 parser.add_argument("-e", "--number_experts", default=8, type=int)
-parser.add_argument("-mt", "--model_type", default="encoder-decoder", type=str)
 
 args = parser.parse_args()
 
@@ -79,9 +77,8 @@ def move_to_cuda_except_experts(model):
 
 
 class FlexibleDataset(Dataset):
-    def __init__(self, tokenizer, model, random_seed=32):
+    def __init__(self, tokenizer, random_seed=32):
         self.tokenizer = tokenizer
-        self.model_config = model.config
         self.max_length = args.seq_len
         self.dataset_option = args.dataset
         self.dataset_size = args.num_iters * args.batch_size * args.world
@@ -93,8 +90,10 @@ class FlexibleDataset(Dataset):
             self.dataset = load_dataset("wikitext", "wikitext-103-raw-v1", split=f"train[:{self.dataset_size}]", streaming=False, cache_dir="/cache")
         elif self.dataset_option == "sst2":
             self.dataset = load_dataset("glue", "sst2", split=f"train[:{self.dataset_size}]", streaming=False, cache_dir="/cache")
-        elif self.dataset_option == "wmt19":
-            self.dataset = load_dataset("wmt/wmt19", "cs-en", split=f"train[:{self.dataset_size}]", streaming=False, cache_dir="/cache")
+        elif self.dataset_option == "wmt10":
+            self.dataset = load_dataset("wmt/wmt10", split=f"train", streaming=False, cache_dir="/cache")
+            print(self.dataset)
+            exit(1)
         elif self.dataset_option == "random":
             self.vocab_size = len(tokenizer)
         else:
@@ -107,28 +106,13 @@ class FlexibleDataset(Dataset):
 
     def __getitem__(self, idx):
         if self.dataset_option != "random":
-            # TODO maybe make random create random string?
-
             if self.dataset_option == "bookcorpus" or self.dataset_option == "wikitext":
-                encoder = "summarize: " + self.dataset[idx]["text"]
+                text = self.dataset[idx]["text"]
             elif self.dataset_option == "sst2":
-                encoder = "summarize: " + self.dataset[idx]["sentence"]
-            elif self.dataset_option == "wmt19":
-                encoder = "translate Czech to English: " + self.dataset[idx]["translation"]["cs"]
-            
-            encoder_tokenized = self.tokenizer(encoder, padding="max_length", truncation=True, max_length=self.max_length, return_tensors="pt")
-            
-            dic = {
-                "input_ids": encoder_tokenized["input_ids"].squeeze(0),
-                "attention_mask": encoder_tokenized["attention_mask"].squeeze(0),
-            }
-
-            if args.model_type == "encoder-decoder":
-                dic["decoder_input_ids"] = torch.tensor([self.model_config.pad_token_id])
-
-            return dic
-        else:  # random dataset   
-            # TODO fix for encoder-decoder         
+                text = self.dataset[idx]["sentence"]
+            encoded = self.tokenizer(text, padding="max_length", truncation=True, max_length=self.max_length, return_tensors="pt")
+            return {k: v.squeeze(0) for k, v in encoded.items()}
+        else:  # random dataset            
             # Generate random token IDs
             input_ids = torch.randint(0, self.vocab_size, (self.max_length,), dtype=torch.int64)            
             
@@ -148,35 +132,27 @@ def run_inference_workload(rank):
         setup(rank)
 
         tokenizer = AutoTokenizer.from_pretrained("google/switch-base-8", cache_dir="/cache")
-        
-        if args.model_type == "encoder-decoder":
-            _class = SwitchTransformersForConditionalGeneration
-        elif args.model_type == "encoder":
-            _class = SwitchTransformersEncoderModel
-        else:
-            print("That model type is not yet implemented!")
-            exit(1)
-        
-        model = _class.from_pretrained(
+        model = SwitchTransformersEncoderModel.from_pretrained(
             f"google/switch-base-{args.number_experts}", 
             scheduling_policy=args.schedule, 
             enable_rebalancing=args.enable_rebalancing, 
             rebalancing_frequency=args.rebalancing_frequency,
             max_loaded_experts=args.max_loaded_experts,
             cache_dir="/cache")
-
         move_to_cuda_except_experts(model)
         model.expert_parallelise()
 
         datasets.enable_caching()
-        flexible_dataset = FlexibleDataset(tokenizer, model)
+        flexible_dataset = FlexibleDataset(tokenizer)
         sampler = DistributedSampler(flexible_dataset, num_replicas=args.world, rank=rank, shuffle=True, seed=49)
         loader = DataLoader(flexible_dataset, sampler=sampler, batch_size=args.batch_size)
-
+        
         model.eval()
 
-        if args.experiment == "standard":
-            run_standard_experiment(model, tokenizer, loader, DIR)
+        if args.experiment == "throughput":
+            run_throughput_experiment(model, loader, flexible_dataset, sampler, DIR)
+        elif args.experiment == "standard":
+            run_standard_experiment(model, loader, DIR)
             save_run_info(ROOT)
         else:
             print(f"That experiment, {args.experiment}, is not yet implemented")
@@ -187,7 +163,7 @@ def run_inference_workload(rank):
     finally:
         cleanup()
 
-def run_standard_experiment(model, tokenizer, loader, path):
+def run_standard_experiment(model, loader, path):
     latencies = []
     
     with torch.no_grad():
@@ -195,10 +171,6 @@ def run_standard_experiment(model, tokenizer, loader, path):
             start = time.time()
             batch = {k: v.cuda() for k, v in batch.items()}
             outputs = model(**batch)
-            if args.model_type == "encoder-decoder":
-                probs = F.softmax(outputs.logits, dim=-1)
-                predicted_token_ids = torch.argmax(probs, dim=-1)
-                predicted_token = [tokenizer.decode(pred_id, skip_special_tokens=True) for pred_id in predicted_token_ids]
             end = time.time()
             latencies.append(end-start)
     
@@ -214,6 +186,49 @@ def run_standard_experiment(model, tokenizer, loader, path):
         writer.writeheader()
         for idx, latency in enumerate(latencies):
             writer.writerow({"Iteration Number": idx, "Latency (s)": latency})
+
+# def run_throughput_experiment(model, loader, dataset, sampler, path):
+#     warmup(model, loader)
+
+#     print(f"Time for batch size: {run_x_times_and_get_average(model, loader)}")
+
+
+    #CUTOFFS = [1.0, 2.0, 3.0]
+    # CUTOFFS = [1.0]
+
+    # warmup(model, loader)
+
+    # results = []
+    # for cutoff in CUTOFFS:
+    #     left = 0
+    #     right = 100
+    #     while True: # Get the right bound
+    #         avg = run_x_times_and_get_average(model, dataset, sampler, batch_size=right)
+    #         if avg > cutoff:
+    #             break
+    #         else:
+    #             left = right
+    #             right *= 2
+    #     while True: # Shrink the right bound
+    #         if right == left:
+    #                 break
+    #         test_size = (right + left) // 2
+    #         test_size = max(test_size, left)
+    #         avg = run_x_times_and_get_average(model, dataset, sampler, batch_size=test_size)
+    #         if avg > cutoff:
+    #             right = test_size
+    #         else:
+    #             left = test_size
+    #     results.append(right)
+    
+    # create_save_dir_if_not_exist(path)
+
+    # file_path = f"{path}/throughput.csv"
+    # with open(file_path, "w") as f:
+    #     writer = csv.DictWriter(f, fieldnames=CUTOFFS)
+    #     writer.writeheader()
+    #     writer.writerow(dict(zip(CUTOFFS, results)))
+
 
 def warmup(model, loader):
     NUM_WARMUP_ROUNDS = 3
@@ -263,6 +278,18 @@ def signal_handler(sig, frame):
     sys.exit(0)
 
 if __name__ == "__main__":
+    # if len(sys.argv) < 6:
+    #     print("usage: python3 start.py num_gpus port_number scheduling_policy dataset experiment [batch_size]")
+    #     exit(1)
+    # world_size = int(sys.argv[1])
+    # port = sys.argv[2]
+    # scheduling_policy = sys.argv[3]
+    # dataset = sys.argv[4]
+    # experiment = sys.argv[5]
+    # batch_size = 250
+    # if len(sys.argv) > 6:
+    #     batch_size = int(sys.argv[6])
+
     signal.signal(signal.SIGINT, signal_handler)
     mp.spawn(run_inference_workload, nprocs=args.world, join=True)
     
