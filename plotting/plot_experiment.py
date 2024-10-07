@@ -94,7 +94,7 @@ def plot_imbalance_and_oversubscription(dirs: [str]):
 
     fig.write_image(f"{OUTPUT_DIR}/oversubscription.png")
 
-def plot_average_speedup(dirs: [str]):
+def plot_average_speedup(comparison: str, dirs: [str]):
     frames = []
     for _dir in dirs:
         df = pd.read_csv(f"{_dir}/0/e2e.csv")
@@ -111,14 +111,14 @@ def plot_average_speedup(dirs: [str]):
     comb_df = comb_df[comb_df["Iteration Number"] > 3]
 
     columns = comb_df.columns.values[1:]
-    if "deepspeed" not in columns:
-        print("To obtain speedups you need deepspeed values")
+    if comparison not in columns:
+        print("To obtain speedups you need designate a comparitor")
         return
 
     for col in columns:
-        if col == "deepspeed":
+        if col == comparison:
             continue
-        comb_df[col] = comb_df["deepspeed"] / comb_df[col]
+        comb_df[col] = comb_df[comparison] / comb_df[col]
     
     d_avg = []
     for col in columns:
@@ -126,7 +126,7 @@ def plot_average_speedup(dirs: [str]):
     
 
     avg_df = pd.DataFrame(d_avg, index=columns, columns=["average speedup"])
-    avg_df = avg_df.drop(index="deepspeed")
+    avg_df = avg_df.drop(index=comparison)
     avg_df = avg_df.sort_index()
 
     fig = px.bar(avg_df, y="average speedup", labels={"index": "scheduling policy"}, text="average speedup")
@@ -137,7 +137,7 @@ def plot_average_speedup(dirs: [str]):
     create_dir_if_needed()
     fig.write_image(f"{OUTPUT_DIR}/average_speedup.png")
 
-def plot_overall_speedup(dirs: [str]):
+def plot_overall_speedup(comparison: str, dirs: [str]):
     frames = []
     for _dir in dirs:
         df = pd.read_csv(f"{_dir}/0/e2e.csv")
@@ -153,8 +153,8 @@ def plot_overall_speedup(dirs: [str]):
     comb_df = comb_df[comb_df["Iteration Number"] > 3]
 
     columns = comb_df.columns.values[1:]
-    if "deepspeed" not in columns:
-        print("To obtain speedups you need deepspeed values")
+    if comparison not in columns:
+        print("To obtain speedups you need designate a comparitor")
         return
     
     df = comb_df.sum(axis=0)
@@ -162,7 +162,7 @@ def plot_overall_speedup(dirs: [str]):
 
     df = df.sort_index()
 
-    df_speedup = df["deepspeed"] / df
+    df_speedup = df[comparison] / df
 
     plot_df = pd.DataFrame({
         'scheduling_policy': df.index,
@@ -186,7 +186,7 @@ def plot_overall_speedup(dirs: [str]):
     create_dir_if_needed()
     fig.write_image(f"{OUTPUT_DIR}/overall_e2e.png")    
 
-def plot_throughput(dirs: [str]):
+def plot_throughput(comparison: str, dirs: [str]):
     throughput = {"policy": [], "throughput": []}
     for _dir in dirs:
         df = pd.read_csv(f"{_dir}/0/e2e.csv")
@@ -201,12 +201,12 @@ def plot_throughput(dirs: [str]):
     
     df = pd.DataFrame(throughput)
 
-    if len(df[df["policy"]=="deepspeed"]) == 0:
-        print("To obtain throughput you need deepspeed values")
+    if len(df[df["policy"]==comparison]) == 0:
+        print("To obtain speedups you need designate a comparitor")
         return
 
-    deepspeed = df[df["policy"]=="deepspeed"]["throughput"].iloc[0]
-    df["labels"] = [f"{val:.2f} ({val/deepspeed:.2f}x)" for val in df["throughput"].tolist()]
+    comp = df[df["policy"]==comparison]["throughput"].iloc[0]
+    df["labels"] = [f"{val:.2f} ({val/comp:.2f}x)" for val in df["throughput"].tolist()]
 
     fig = px.bar(df, x="policy", y="throughput", text="labels", 
         labels={"policy": "scheduling policy", "throughput": "throughput (reqs/s)"})
@@ -347,11 +347,12 @@ if len(sys.argv) == 2:
 else:
     plotting_type = sys.argv[1]
     if plotting_type == "single":
-        plot_e2e(sys.argv[2:])
-        plot_imbalance_and_oversubscription(sys.argv[2:])
-        plot_average_speedup(sys.argv[2:])
-        plot_overall_speedup(sys.argv[2:])
-        plot_throughput(sys.argv[2:])
+        comparison = sys.argv[2]
+        plot_e2e(sys.argv[3:])
+        plot_imbalance_and_oversubscription(sys.argv[3:])
+        plot_average_speedup(comparison, sys.argv[3:])
+        plot_overall_speedup(comparison, sys.argv[3:])
+        plot_throughput(comparison, sys.argv[3:])
     elif plotting_type == "metric":
         metric = sys.argv[2]
         plot_speedup_across_metric(metric, sys.argv[3:])

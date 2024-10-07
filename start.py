@@ -15,6 +15,7 @@ import signal
 import argparse
 import math
 import random
+from tqdm import tqdm
 
 import datasets
 from datasets import load_dataset
@@ -138,7 +139,10 @@ class FlexibleDataset(Dataset):
 
             encoder = " ".join(encoder)
 
-        encoder_tokenized = self.tokenizer(encoder, padding="max_length", truncation=True, max_length=self.max_length, return_tensors="pt")
+        if args.batch_size == 1:
+            encoder_tokenized = self.tokenizer(encoder, truncation=True, max_length=self.max_length, return_tensors="pt")
+        else:
+            encoder_tokenized = self.tokenizer(encoder, padding="max_length", truncation=True, max_length=self.max_length, return_tensors="pt")
         
         dic = {
             "input_ids": encoder_tokenized["input_ids"].squeeze(0),
@@ -200,7 +204,7 @@ def run_standard_experiment(model, tokenizer, loader, path):
     latencies = []
     
     with torch.no_grad():
-        for batch in loader:
+        for batch in tqdm(loader):
             start = time.time()
             batch = {k: v.cuda() for k, v in batch.items()}
             outputs = model(**batch)
