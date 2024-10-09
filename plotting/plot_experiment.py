@@ -38,6 +38,7 @@ def plot_e2e(dirs: [str]):
     df = df[df["Iteration Number"] > 3]
 
     fig = px.line(df, x="Iteration Number", y="Latency (s)", color="name")
+    fig.update_yaxes(rangemode="tozero")
     update_fig_to_theme(fig)
 
     create_dir_if_needed()
@@ -83,6 +84,7 @@ def plot_imbalance_and_oversubscription(dirs: [str]):
     df = df[df["iteration"] > 3]
 
     fig = px.line(df, x="iteration", y="imbalance", color="name", labels={"iteration": "Iteration Number", "imbalance": "Imbalance (relative %)"})
+    fig.update_yaxes(rangemode="tozero")
     update_fig_to_theme(fig)
 
     create_dir_if_needed()
@@ -90,6 +92,7 @@ def plot_imbalance_and_oversubscription(dirs: [str]):
 
 
     fig = px.line(df, x="iteration", y="oversubscription", color="name", labels={"iteration": "Iteration Number", "oversubscription": "Oversubscription (relative %)"})
+    fig.update_yaxes(rangemode="tozero")
     update_fig_to_theme(fig)
 
     fig.write_image(f"{OUTPUT_DIR}/oversubscription.png")
@@ -132,6 +135,7 @@ def plot_average_speedup(comparison: str, dirs: [str]):
     fig = px.bar(avg_df, y="average speedup", labels={"index": "scheduling policy"}, text="average speedup")
     fig.update_traces(texttemplate='%{text:.2f}', textposition='outside')
     fig.update_layout(uniformtext_minsize=8, uniformtext_mode='hide')
+    fig.update_yaxes(rangemode="tozero")
     update_fig_to_theme(fig)
 
     create_dir_if_needed()
@@ -181,6 +185,7 @@ def plot_overall_speedup(comparison: str, dirs: [str]):
     
     fig.update_traces(textposition='outside')
     fig.update_layout(uniformtext_minsize=8, uniformtext_mode="hide", showlegend=False)
+    fig.update_yaxes(rangemode="tozero")
     update_fig_to_theme(fig)
 
     create_dir_if_needed()
@@ -212,6 +217,7 @@ def plot_throughput(comparison: str, dirs: [str]):
         labels={"policy": "scheduling policy", "throughput": "throughput (reqs/s)"})
     fig.update_traces(textposition='outside')
     fig.update_layout(uniformtext_minsize=8, uniformtext_mode="hide", showlegend=False)
+    fig.update_yaxes(rangemode="tozero")
     update_fig_to_theme(fig)
 
     create_dir_if_needed()
@@ -234,6 +240,7 @@ def plot_maximal_batch_size(path: str):
                         "batch_size": "maximal batch size"})
         fig.update_traces(textposition='outside')
         fig.update_layout(uniformtext_minsize=8, uniformtext_mode="hide", showlegend=False)
+        fig.update_yaxes(rangemode="tozero")
         update_fig_to_theme(fig)
 
         create_dir_if_needed()
@@ -255,6 +262,7 @@ def plot_speedup_across_metric(metric: str, dirs: [str]):
         })
 
     df = pd.DataFrame(values)
+    print(df)
     metrics = df["metric"].unique()
     df['speedup'] = float('nan')
     for m in metrics:
@@ -266,6 +274,7 @@ def plot_speedup_across_metric(metric: str, dirs: [str]):
     df["labels"] = [f"{val:.2f}" for val in df["speedup"].tolist()]
     fig = px.scatter(df, x="policy", y="speedup", color="metric", text="labels", labels={"metric": metric})
     fig.update_traces(textposition='middle right', marker_size=20)
+    fig.update_yaxes(rangemode="tozero")
     update_fig_to_theme(fig)
 
     create_dir_if_needed()
@@ -329,6 +338,7 @@ def plot_imbalance_and_oversubscription_across_metric(metric: str, dirs: [str]):
     
     fig = px.scatter(df, x="policy", y="imbalance", color="metric", text="labels_imbalance", labels={"metric": metric})
     fig.update_traces(textposition='middle right', marker_size=20)
+    fig.update_yaxes(rangemode="tozero")
     update_fig_to_theme(fig)
 
     create_dir_if_needed()
@@ -336,6 +346,7 @@ def plot_imbalance_and_oversubscription_across_metric(metric: str, dirs: [str]):
 
     fig = px.scatter(df, x="policy", y="oversubscription", color="metric", text="labels_oversubscription")
     fig.update_traces(textposition='middle right', marker_size=20)
+    fig.update_yaxes(rangemode="tozero")
     update_fig_to_theme(fig)
 
     create_dir_if_needed()

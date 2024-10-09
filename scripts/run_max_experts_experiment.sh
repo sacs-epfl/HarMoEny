@@ -1,0 +1,42 @@
+#!/bin/bash
+
+cd ..
+python3 start.py -me 2 -bs 1000 -w 4 -ns 25000 -pa "outputs/max_experts_exp" -s "drop" -d "bookcorpus"
+python3 start.py -me 3 -bs 1000 -w 4 -ns 25000 -pa "outputs/max_experts_exp" -s "drop" -d "bookcorpus"
+python3 start.py -me 4 -bs 1000 -w 4 -ns 25000 -pa "outputs/max_experts_exp" -s "drop" -d "bookcorpus"
+python3 start.py -me 5 -bs 1000 -w 4 -ns 25000 -pa "outputs/max_experts_exp" -s "drop" -d "bookcorpus"
+python3 start.py -me 6 -bs 1000 -w 4 -ns 25000 -pa "outputs/max_experts_exp" -s "drop" -d "bookcorpus"
+python3 start.py -me 7 -bs 1000 -w 4 -ns 25000 -pa "outputs/max_experts_exp" -s "drop" -d "bookcorpus"
+python3 start.py -me 8 -bs 1000 -w 4 -ns 25000 -pa "outputs/max_experts_exp" -s "drop" -d "bookcorpus"
+
+python3 start.py -me 2 -bs 1000 -w 4 -ns 25000 -pa "outputs/max_experts_exp" -s "deepspeed" -d "bookcorpus"
+python3 start.py -me 3 -bs 1000 -w 4 -ns 25000 -pa "outputs/max_experts_exp" -s "deepspeed" -d "bookcorpus"
+python3 start.py -me 4 -bs 1000 -w 4 -ns 25000 -pa "outputs/max_experts_exp" -s "deepspeed" -d "bookcorpus"
+python3 start.py -me 5 -bs 1000 -w 4 -ns 25000 -pa "outputs/max_experts_exp" -s "deepspeed" -d "bookcorpus"
+python3 start.py -me 6 -bs 1000 -w 4 -ns 25000 -pa "outputs/max_experts_exp" -s "deepspeed" -d "bookcorpus"
+python3 start.py -me 7 -bs 1000 -w 4 -ns 25000 -pa "outputs/max_experts_exp" -s "deepspeed" -d "bookcorpus"
+python3 start.py -me 8 -bs 1000 -w 4 -ns 25000 -pa "outputs/max_experts_exp" -s "deepspeed" -d "bookcorpus"
+
+python3 start.py -me 2 -bs 1000 -w 4 -ns 25000 -pa "outputs/max_experts_exp" -s "adnexus" -d "bookcorpus"
+python3 start.py -me 3 -bs 1000 -w 4 -ns 25000 -pa "outputs/max_experts_exp" -s "adnexus" -d "bookcorpus"
+python3 start.py -me 4 -bs 1000 -w 4 -ns 25000 -pa "outputs/max_experts_exp" -s "adnexus" -d "bookcorpus"
+python3 start.py -me 5 -bs 1000 -w 4 -ns 25000 -pa "outputs/max_experts_exp" -s "adnexus" -d "bookcorpus"
+python3 start.py -me 6 -bs 1000 -w 4 -ns 25000 -pa "outputs/max_experts_exp" -s "adnexus" -d "bookcorpus"
+python3 start.py -me 7 -bs 1000 -w 4 -ns 25000 -pa "outputs/max_experts_exp" -s "adnexus" -d "bookcorpus"
+python3 start.py -me 8 -bs 1000 -w 4 -ns 25000 -pa "outputs/max_experts_exp" -s "adnexus" -d "bookcorpus"
+
+python3 start.py -me 2 -bs 1000 -w 4 -ns 25000 -pa "outputs/max_experts_exp" -s "demeter" -d "bookcorpus"
+python3 start.py -me 3 -bs 1000 -w 4 -ns 25000 -pa "outputs/max_experts_exp" -s "demeter" -d "bookcorpus"
+python3 start.py -me 4 -bs 1000 -w 4 -ns 25000 -pa "outputs/max_experts_exp" -s "demeter" -d "bookcorpus"
+python3 start.py -me 5 -bs 1000 -w 4 -ns 25000 -pa "outputs/max_experts_exp" -s "demeter" -d "bookcorpus"
+python3 start.py -me 6 -bs 1000 -w 4 -ns 25000 -pa "outputs/max_experts_exp" -s "demeter" -d "bookcorpus"
+python3 start.py -me 7 -bs 1000 -w 4 -ns 25000 -pa "outputs/max_experts_exp" -s "demeter" -d "bookcorpus"
+python3 start.py -me 8 -bs 1000 -w 4 -ns 25000 -pa "outputs/max_experts_exp" -s "demeter" -d "bookcorpus"
+
+python3 start.py -me 2 -bs 1000 -w 4 -ns 25000 -pa "outputs/max_experts_exp" -s "even_split" -d "bookcorpus"
+python3 start.py -me 3 -bs 1000 -w 4 -ns 25000 -pa "outputs/max_experts_exp" -s "even_split" -d "bookcorpus"
+python3 start.py -me 4 -bs 1000 -w 4 -ns 25000 -pa "outputs/max_experts_exp" -s "even_split" -d "bookcorpus"
+python3 start.py -me 5 -bs 1000 -w 4 -ns 25000 -pa "outputs/max_experts_exp" -s "even_split" -d "bookcorpus"
+python3 start.py -me 6 -bs 1000 -w 4 -ns 25000 -pa "outputs/max_experts_exp" -s "even_split" -d "bookcorpus"
+python3 start.py -me 7 -bs 1000 -w 4 -ns 25000 -pa "outputs/max_experts_exp" -s "even_split" -d "bookcorpus"
+python3 start.py -me 8 -bs 1000 -w 4 -ns 25000 -pa "outputs/max_experts_exp" -s "even_split" -d "bookcorpus"

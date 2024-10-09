@@ -106,7 +106,7 @@ class FlexibleDataset(Dataset):
         elif self.dataset_option == "sst2":
             self.dataset = load_dataset("glue", "sst2", split=f"train[:{DESIRED_DATASET_SIZE}]", streaming=False, cache_dir="/cache")
         elif self.dataset_option == "wmt19":
-            self.dataset = load_dataset("wmt/wmt19", "en-de", split=f"train[:{DESIRED_DATASET_SIZE}]", streaming=False, cache_dir="/cache")
+            self.dataset = load_dataset("wmt/wmt19", "de-en", split=f"train[:{DESIRED_DATASET_SIZE}]", streaming=False, cache_dir="/cache")
         elif self.dataset_option == "random":
             pass
         else:
