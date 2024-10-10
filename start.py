@@ -33,7 +33,7 @@ parser = argparse.ArgumentParser(
 
 parser.add_argument("-sl", "--seq_len", default=120, type=int)
 parser.add_argument("-ni", "--num_iters", default=0, type=int)
-parser.add_argument("-ns", "--num_samples", default=0, type=int, help="Number of samples per GPU")
+parser.add_argument("-ns", "--num_samples", default=0, type=int, help="Number of total samples")
 parser.add_argument("-w", "--world", default=torch.cuda.device_count(), type=int)
 parser.add_argument("-p", "--port", default="1234", type=str)
 parser.add_argument("-s", "--schedule", default="deepspeed", type=str)
@@ -65,7 +65,7 @@ if args.num_iters == 0 and args.num_samples == 0:
 if args.num_iters != 0:
     DESIRED_DATASET_SIZE = args.num_iters * args.batch_size * args.world
 else:
-    DESIRED_DATASET_SIZE = args.num_samples * args.world
+    DESIRED_DATASET_SIZE = args.num_samples
 
 def setup(rank):
     os.environ["MASTER_ADDR"] = "localhost"
