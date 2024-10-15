@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-from .configuration_switch_transformers import SwitchTransformersConfig
 import torch.distributed as dist
 import copy
 import random
@@ -20,8 +19,8 @@ class ExpertManager():
 
         self.validate_arguments()
 
-        self.executer = execute_job if self.fixed_cache is None else direct_execute_job
-        self.rng = random.Random(seed=32)
+        self.executer = self.execute_job if self.fixed_cache is None else self.direct_execute_job
+        self.rng = random.Random(32)
         self.cache = [[None for _ in range(self.cache_size)] for _ in range(self.num_gpus)]
 
         self.stream = torch.cuda.Stream()
@@ -108,7 +107,7 @@ class ExpertManager():
         return idx 
     
     def is_expert_loaded(self, expert_idx):
-        return sefl.expert_loaded_location(expert_idx) != -1
+        return self.expert_loaded_location(expert_idx) != -1
     
     def direct_execute_job(self, workload: list):
         for expert_idx in range(self.num_experts):
@@ -180,26 +179,29 @@ class ExpertManager():
         if self.fixed_cache:
             return # Do not update a fixed cache
         
-        new_cache = self.gen_cache_given_schedule(schedule)
+        new_cache = self.gen_cache(schedule)
 
         if self.reference_cache:
             temp = self.reference_cache[:]
-            for idx in range(len(temp)):
-                if len(temp[idx]) < self.cache_size:
-                    temp[idx] += new_cache[idx][:self.cache_size-len(temp[idx])]
+            for expert_idx in new_cache[self.rank]:
+                if len(temp[self.rank]) >= self.cache_size:
+                    break
+                if expert_idx not in temp[self.rank]:
+                    temp[self.rank].append(expert_idx)
+            new_cache = temp
         
         self.load_cache(new_cache)
     
-    def gen_same_cache(_):
+    def gen_same_cache(self, _):
         return self.cache
     
-    def gen_random_cache(_):
+    def gen_random_cache(self, _):
         expert_idxs = list(range(self.num_experts))
         self.rng.shuffle(expert_idxs)
         new_cache = [experts_idx[i:i+self.cache_size] for i in range(0, self.cache_size*self.num_gpus, self.cache_size)]
         return new_cache
     
-    def gen_most_tokens_used_cache(schedule):
+    def gen_most_tokens_used_cache(self, schedule):
         new_cache = [[] for _ in range(self.num_gpus)]
 
         for i in range(self.num_gpus):
@@ -225,7 +227,8 @@ class ExpertManager():
             
             new_cache[i] = experts_most_toks
 
-    def gen_most_recently_used_cache(schedule):
+    def gen_most_recently_used_cache(self, schedule):
+        # For this need to generate the work order
         pass 
         
 

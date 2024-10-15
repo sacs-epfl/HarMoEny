@@ -16,26 +16,39 @@ class Scheduler():
         self.eq_tokens = eq_tokens
         self.d_model = d_model
 
-        self.deepspeed_topo = self.generate_deepspeed_topo()
-        self.demeter_offload_topo = self.generate_deepspeed_topo()
-        random.shuffle(self.demeter_offload_topo)
+        self.deepspeed_assign = self.generate_deepspeed_topo()
+        self.demeter_offload_assign = self.generate_deepspeed_topo()
+        random.shuffle(self.demeter_offload_assign)
+
+        self.fixed_assign = None
+        self.reference_assign = None
 
         match scheduling_policy:
             case "deepspeed":
                 self.scheduler = self.schedule_deepspeed
+                self.fixed_assign = self.deepspeed_assign
             case "adnexus":
                 self.scheduler = self.schedule_adnexus
+                self.reference_assign = self.deepspeed_assign
             case "even_split":
                 self.scheduler = self.schedule_even_split
             case "drop":
                 self.scheduler = self.schedule_drop
+                self.fixed_assign = self.deepspeed_assign
             case "demeter":
                 self.scheduler = self.schedule_demeter
+                self.reference_assign = self.deepspeed_assign
             case "adfabricus":
                 self.scheduler = self.schedule_adfabricus
             case _:
                 print("SCHEDULING POLICY NOT IMPLEMENTED")
                 exit(1)
+    
+    def get_fixed_assign(self):
+        return self.fixed_assign
+    
+    def get_reference_assign(self):
+        return self.reference_assign 
     
     def __call__(self, meta, topo):
         return self.scheduler(meta, topo)
@@ -132,7 +145,7 @@ class Scheduler():
             for j in range(self.num_experts): # expert
                 target = -1
                 for k in range(self.num_gpus):
-                    if j in self.deepspeed_topo[k]:
+                    if j in self.deepspeed_assign[k]:
                         target = k 
                         break
                 if target == -1:
@@ -154,7 +167,7 @@ class Scheduler():
                     continue # We do not have work for this one
                 start_idx = 0
                 for k in range(self.num_gpus): # dest
-                    if j in self.deepspeed_topo[k]:
+                    if j in self.deepspeed_assign[k]:
                         if gpu_amt[k] < avg:
                             num_tokens_send = min(num_tokens, avg - gpu_amt[k])
                             schedule[i][j][k] = num_tokens_send
@@ -282,7 +295,7 @@ class Scheduler():
 
                 # Find offload GPU for that expert
                 offload_gpu_idx = -1
-                for gpu_idx, offloads in enumerate(self.demeter_offload_topo):
+                for gpu_idx, offloads in enumerate(self.demeter_offload_assign):
                     if most_idx in offloads:
                         offload_gpu_idx = gpu_idx
                         break

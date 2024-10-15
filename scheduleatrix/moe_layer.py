@@ -1,28 +1,48 @@
 from .scheduler import Scheduler
 from .expert_manager import ExpertManager
 
-class MoELayer(nn.Module):
-    def __init__(self, 
-            router=None,
-            experts=None, 
-            layer_idx=None, 
-            is_decoder=False, 
-            scheduling_policy="deepspeed",
-            expert_cache_size=None,
-            eq_tokens=150,
-            d_model=768):
+import torch.nn as nn
+import torch
+import torch.distributed as dist 
 
-        super().__init__()
-        self.layer_idx = layer_idx
-        self.is_decoder = is_decoder
+from dataclasses import dataclass
+
+@dataclass
+class MoEConfig:
+    layer_idx: int = None
+    is_decoder: bool = False
+    scheduling_policy: str = "deepspeed"
+    cache_policy: str = "RAND"
+    expert_cache_size: int = None
+    dynamic_components: any = None
+    eq_tokens: int = 150
+    d_model: int = 768
+
+
+# router=None,
+#             experts=None, 
+#             layer_idx=None, 
+#             is_decoder=False, 
+#             scheduling_policy="deepspeed",
+#             cache_policy="RAND",
+#             expert_cache_size=None,
+#             dynamic_components=None,
+#             eq_tokens=150,
+#             d_model=768,
+
+class MoELayer(nn.Module):
+    def __init__(self, router, experts, config=MoEConfig):
+
+        super(MoELayer, self).__init__()
+
+        self.router = router 
+
+        self.layer_idx = config.layer_idx
+        self.is_decoder = config.is_decoder
 
         self.num_experts = len(experts)
         self.num_gpus = dist.get_world_size()
         self.rank = dist.get_rank()
-        self.scheduling_policy = scheduling_policy
-        self.expert_cache_size = expert_cache_size
-        self.eq_tokens = eq_tokens
-        self.d_model = d_model
 
         # For statistics 
         self.tot_num_toks_send = []
@@ -30,19 +50,24 @@ class MoELayer(nn.Module):
 
         # Create our scheduler and exper manager
         self.scheduler = Scheduler(
-            scheduling_policy=self.scheduling_policy if not self.is_decoder else "deepspeed", 
+            scheduling_policy=config.scheduling_policy if not self.is_decoder else "deepspeed", 
             num_experts=self.num_experts,
-            eq_tokens=self.eq_tokens,
-            d_model=self.d_model,
+            eq_tokens=config.eq_tokens,
+            d_model=config.d_model,
         )
 
         self.expert_manager = ExpertManager(
-            self.experts, 
-            self.expert_cache_size
+            experts, 
+            config.expert_cache_size,
+            config.dynamic_components,
+            fixed_cache=self.scheduler.get_fixed_assign(),
+            reference_cache=self.scheduler.get_reference_assign(),
+            cache_policy=config.cache_policy,
         )
     
     def cuda(self, device=None):
-        self.expert_manager.cuda() # TODO give better name
+        self.router.cuda()
+        self.expert_manager.cuda()
 
     def save_statistics(self, DIR=""):
         path = f"{DIR}/moe_l{self.layer_idx}"
