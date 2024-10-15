@@ -1,0 +1,115 @@
+from .scheduler import Scheduler
+from .expert_manager import ExpertManager
+
+class MoELayer(nn.Module):
+    def __init__(self, 
+            router=None,
+            experts=None, 
+            layer_idx=None, 
+            is_decoder=False, 
+            scheduling_policy="deepspeed",
+            expert_cache_size=None,
+            eq_tokens=150,
+            d_model=768):
+
+        super().__init__()
+        self.layer_idx = layer_idx
+        self.is_decoder = is_decoder
+
+        self.num_experts = len(experts)
+        self.num_gpus = dist.get_world_size()
+        self.rank = dist.get_rank()
+        self.scheduling_policy = scheduling_policy
+        self.expert_cache_size = expert_cache_size
+        self.eq_tokens = eq_tokens
+        self.d_model = d_model
+
+        # For statistics 
+        self.tot_num_toks_send = []
+        self.tot_num_toks_recv = []
+
+        # Create our scheduler and exper manager
+        self.scheduler = Scheduler(
+            scheduling_policy=self.scheduling_policy if not self.is_decoder else "deepspeed", 
+            num_experts=self.num_experts,
+            eq_tokens=self.eq_tokens,
+            d_model=self.d_model,
+        )
+
+        self.expert_manager = ExpertManager(
+            self.experts, 
+            self.expert_cache_size
+        )
+    
+    def cuda(self, device=None):
+        self.expert_manager.cuda() # TODO give better name
+
+    def save_statistics(self, DIR=""):
+        path = f"{DIR}/moe_l{self.layer_idx}"
+        if self.is_decoder:
+            path += "_decode"
+
+        with open(f"{path}.csv", "w") as f:
+            fieldnames = ["iteration", "total number of tokens sent", "total number of tokens recv"]
+
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+
+            for i in range(len(self.tot_num_toks_send)):
+                dic = {
+                    "iteration": i,
+                    "total number of tokens sent": self.tot_num_toks_send[i],
+                    "total number of tokens recv": self.tot_num_toks_recv[i],
+                }
+             
+                writer.writerow(dic)
+
+    @torch.no_grad()
+    def forward(self, hidden_states):
+        router_mask, router_probs, router_logits = self.router(hidden_states)
+        # router_mask has dim (batch_size, seq_len, num_experts)
+        # Entry will be a 1 on which expert to work on for the specific token
+        # at specific sequence index on specific sample, rest will be 0
+        
+        expert_index = torch.argmax(router_mask, dim=-1)
+        router_mask = router_mask.bool()
+
+        num_toks_per_expert = []
+
+        # Collect some stats
+        tot = 0
+        for j in range(self.num_experts):
+            size = hidden_states[router_mask[:,:,j]].shape[0]
+            num_toks_per_expert.append(size)
+            tot += size
+        self.tot_num_toks_send.append(tot)
+        
+        metadata_send = [torch.tensor(num_toks_per_expert, dtype=torch.int, device="cuda") for _ in range(self.num_gpus)]
+        metadata_recv = [torch.zeros(self.num_experts, dtype=torch.int, device="cuda") for _ in range(self.num_gpus)]
+
+        # Metadata all_to_all
+        dist.all_to_all(metadata_recv, metadata_send)
+
+        # Create global schedule
+        schedule = self.scheduler(metadata_recv, self.expert_manager.get_cached())
+
+        # Turn schedule and hidden_states into array of tensors
+        # to distribute to each GPU
+        tokens_send = self.scheduler.distribute_tokens(schedule, hidden_states, router_mask)
+        tokens_recv = self.scheduler.allocate_recv_tensors(schedule)
+        self.tot_num_toks_recv.append(sum(list(map(lambda x: x.shape[0], tokens_recv))))
+        
+        dist.all_to_all(tokens_recv, tokens_send)
+
+        expert_tokens = self.scheduler.group_experts(schedule, tokens_recv)
+        
+        expert_tokens = self.expert_manager(expert_tokens)
+
+        tokens_recv = self.scheduler.ungroup_experts(schedule, expert_tokens)
+
+        dist.all_to_all(tokens_send, tokens_recv)
+
+        hidden_states = self.scheduler.gather_tokens(schedule, tokens_send, hidden_states, router_mask)
+
+        hidden_states = router_probs * hidden_states
+        return hidden_states, (router_logits, expert_index)
