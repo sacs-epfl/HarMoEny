@@ -18,18 +18,6 @@ class MoEConfig:
     eq_tokens: int = 150
     d_model: int = 768
 
-
-# router=None,
-#             experts=None, 
-#             layer_idx=None, 
-#             is_decoder=False, 
-#             scheduling_policy="deepspeed",
-#             cache_policy="RAND",
-#             expert_cache_size=None,
-#             dynamic_components=None,
-#             eq_tokens=150,
-#             d_model=768,
-
 class MoELayer(nn.Module):
     def __init__(self, router, experts, config=MoEConfig):
 
