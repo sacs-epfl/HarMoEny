@@ -13,6 +13,7 @@ class ExpertManager():
         self.cache_size = cache_size
         self.dynamic_components = dynamic_components
         self.fixed_cache = fixed_cache
+        #print(f"({self.rank}) {self.fixed_cache[self.rank]}")
         # Cache can only hold up to cache_size
         self.reference_cache = list(map(lambda x: x[:cache_size], reference_cache)) if reference_cache else None 
         self.cache_policy = cache_policy
@@ -72,6 +73,8 @@ class ExpertManager():
                     loc += 1
                 new_rank_cache_aligned[loc] = expert
                 loc += 1
+        
+        #print(f"({self.rank}) developed new cache {new_rank_cache_aligned}")
 
         for slot_idx, expert_idx in enumerate(new_rank_cache_aligned):
             if expert_idx is not None:
@@ -87,11 +90,11 @@ class ExpertManager():
     def load_expert(self, expert_idx: int, load_idx: int): 
         if self.cache[self.rank][load_idx] == expert_idx:
             return
-
+        # print(f"({self.rank}) loading expert {expert_idx}")
         with torch.no_grad():
             with torch.cuda.stream(self.stream):
-                for component in dynamic_components:
-                    self.cached_experts[load_idx][component].weight.copy_(self.cpu_experts[f"expert_{expert_idx}"][component].weight)
+                for component in self.dynamic_components:
+                    getattr(self.cached_experts[load_idx], component).weight.copy_(getattr(self.cpu_experts[f"expert_{expert_idx}"], component).weight)
                 self.cache[self.rank][load_idx] = expert_idx
                 self.is_slot_loaded[load_idx].record()
     

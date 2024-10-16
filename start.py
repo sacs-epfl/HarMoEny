@@ -22,6 +22,9 @@ from datasets import load_dataset
 from torch.utils.data import DataLoader, DistributedSampler, Dataset
 from transformers import AutoTokenizer, SwitchTransformersEncoderModel, SwitchTransformersForConditionalGeneration
 
+from scheduleatrix.utils import replace_moe_layer
+from scheduleatrix.moe_layer import MoEConfig
+
 def str2bool(s):
     return s.lower() in ["yes", "y", "true", "t"]
 
@@ -37,22 +40,18 @@ parser.add_argument("-ns", "--num_samples", default=0, type=int, help="Number of
 parser.add_argument("-w", "--world", default=torch.cuda.device_count(), type=int)
 parser.add_argument("-p", "--port", default="1234", type=str)
 parser.add_argument("-s", "--schedule", default="deepspeed", type=str)
+parser.add_argument("-cp", "--cache_policy", default="RAND", type=str)
 parser.add_argument("-d", "--dataset", default="sst2", type=str)
 parser.add_argument("-bs", "--batch_size", default=250, type=int, help="Batch size per GPU")
 parser.add_argument("-x", "--experiment", default="standard", type=str)
-parser.add_argument("-r", "--enable_rebalancing", default=False, type=str2bool)
-parser.add_argument("-rf", "--rebalancing_frequency", default=15, type=int)
-parser.add_argument("-me", "--max_loaded_experts", default=2, type=int)
+parser.add_argument("-ec", "--expert_cache_size", default=2, type=int)
 parser.add_argument("-e", "--num_experts", default=8, type=int)
 parser.add_argument("-mt", "--model_type", default="encoder-decoder", type=str)
 parser.add_argument("-pa", "--path", default="outputs", type=str, help="Specify where to save path")
+parser.add_argument("-eq", "--eq_tokens", default=150, type=int)
+parser.add_argument("-dm", "--d_model", default=768, type=int)
 
 args = parser.parse_args()
-
-# Max loaded experts must be greater than or equal to EP size
-if args.max_loaded_experts < math.ceil(args.num_experts / args.world):
-    print("The max loaded experts must be greater than the expert parallel size")
-    exit(1)
 
 if args.num_experts not in [8, 16, 32, 64, 128, 256]:
     print(f"There is no model with {args.num_experts} experts")
@@ -78,17 +77,17 @@ def setup(rank):
 def cleanup():
     dist.destroy_process_group()
 
-def move_to_cuda_except_experts(model):
-    for name, module in model.named_children():
-        if name == 'experts':
-            # We want to keep the experts on cpu
-            continue
-        elif list(module.children()):
-            # If the module has children, recurse
-            move_to_cuda_except_experts(module)
-        else:
-            # If it's a leaf module (no children) and not part of experts, move to CUDA
-            module.cuda()
+# def move_to_cuda_except_experts(model):
+#     for name, module in model.named_children():
+#         if name == 'experts':
+#             # We want to keep the experts on cpu
+#             continue
+#         elif list(module.children()):
+#             # If the module has children, recurse
+#             move_to_cuda_except_experts(module)
+#         else:
+#             # If it's a leaf module (no children) and not part of experts, move to CUDA
+#             module.cuda()
 
 
 class FlexibleDataset(Dataset):
@@ -170,16 +169,26 @@ def run_inference_workload(rank):
             print("That model type is not yet implemented!")
             exit(1)
         
-        model = _class.from_pretrained(
-            f"google/switch-base-{args.num_experts}", 
-            scheduling_policy=args.schedule, 
-            enable_rebalancing=args.enable_rebalancing, 
-            rebalancing_frequency=args.rebalancing_frequency,
-            max_loaded_experts=args.max_loaded_experts,
-            cache_dir="/cache")
+        model = _class.from_pretrained(f"google/switch-base-{args.num_experts}", cache_dir="/cache")
+        config = MoEConfig(
+            scheduling_policy=args.schedule,
+            expert_cache_size=args.expert_cache_size,
+            dynamic_components=["wi", "wo"],
+            eq_tokens=args.eq_tokens,
+            d_model=args.d_model,
+        )
+        moe_layers = replace_moe_layer(
+            model, 
+            "SwitchTransformersSparseMLP", 
+            "router", 
+            "experts",
+            "decoder",
+            config,
+        )
+        model.cuda()
 
-        move_to_cuda_except_experts(model)
-        model.expert_parallelise()
+        # move_to_cuda_except_experts(model)
+        # model.expert_parallelise()
 
         datasets.enable_caching()
         flexible_dataset = FlexibleDataset(tokenizer, model)
@@ -189,8 +198,9 @@ def run_inference_workload(rank):
         model.eval()
 
         if args.experiment == "standard":
-            run_standard_experiment(model, tokenizer, loader, f"{ROOT}/{rank}")
-            save_run_info(ROOT)
+            run_standard_experiment(model, moe_layers, tokenizer, loader, f"{ROOT}/{rank}")
+            if rank == 0:
+                save_run_info(ROOT)
         else:
             print(f"That experiment, {args.experiment}, is not yet implemented")
             exit(1)
@@ -200,7 +210,7 @@ def run_inference_workload(rank):
     finally:
         cleanup()
 
-def run_standard_experiment(model, tokenizer, loader, path):
+def run_standard_experiment(model, moe_layers, tokenizer, loader, path):
     latencies = []
     
     with torch.no_grad():
@@ -208,17 +218,18 @@ def run_standard_experiment(model, tokenizer, loader, path):
             start = time.time()
             batch = {k: v.cuda() for k, v in batch.items()}
             outputs = model(**batch)
-            if args.model_type == "encoder-decoder":
-                probs = F.softmax(outputs.logits, dim=-1)
-                predicted_token_ids = torch.argmax(probs, dim=-1)
-                predicted_token = [tokenizer.decode(pred_id, skip_special_tokens=True) for pred_id in predicted_token_ids]
+            # if args.model_type == "encoder-decoder":
+            #     probs = F.softmax(outputs.logits, dim=-1)
+            #     predicted_token_ids = torch.argmax(probs, dim=-1)
+            #     predicted_token = [tokenizer.decode(pred_id, skip_special_tokens=True) for pred_id in predicted_token_ids]
             end = time.time()
             latencies.append(end-start)
     
 
     create_save_dir_if_not_exist(path)
 
-    model.expert_save_latencies(f"{path}")
+    for moe_layer in moe_layers:
+        moe_layer.save_statistics(DIR=path)
 
     file_path = f"{path}/e2e.csv"
     with open(file_path, "w") as f:
@@ -262,7 +273,8 @@ def create_save_dir_if_not_exist(path):
 def save_run_info(path):
      with open(f"{path}/data.json", "w") as f:
         json.dump({
-            "name": args.schedule,
+            "scheduling_policy": args.schedule,
+            "cache_policy": args.cache_policy,
             "batch_size": args.batch_size,
             "world_size": args.world,
             "dataset": args.dataset,
@@ -271,10 +283,11 @@ def save_run_info(path):
             "num_samples": args.num_samples,
             "port": args.port,
             "experiment": args.experiment,
-            "enable_rebalancing": args.enable_rebalancing,
-            "max_loaded_experts": args.max_loaded_experts,
+            "expert_cache_size": args.expert_cache_size,
             "num_experts": args.num_experts,
-            "model_type": args.model_type
+            "model_type": args.model_type,
+            "eq_tokens": args.eq_tokens,
+            "d_model": args.d_model,
         }, f)
 
 def signal_handler(sig, frame):

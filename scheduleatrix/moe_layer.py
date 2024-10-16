@@ -6,6 +6,7 @@ import torch
 import torch.distributed as dist 
 
 from dataclasses import dataclass
+import csv
 
 @dataclass
 class MoEConfig:
@@ -53,9 +54,11 @@ class MoELayer(nn.Module):
             cache_policy=config.cache_policy,
         )
     
-    def cuda(self, device=None):
-        self.router.cuda()
-        self.expert_manager.cuda()
+    # This is called on all modules to apply certain functions such as cuda
+    def _apply(self, fn):
+        fn(self.router)
+        fn(self.expert_manager)
+        return self
 
     def save_statistics(self, DIR=""):
         path = f"{DIR}/moe_l{self.layer_idx}"

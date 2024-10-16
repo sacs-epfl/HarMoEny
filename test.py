@@ -29,7 +29,6 @@ def start(rank):
         "decoder",
         config,
     )
-    print(moe_layers)
 
 if __name__ == "__main__":
     mp.spawn(start, nprocs=1, join=True)
