@@ -53,7 +53,9 @@ class ExpertManager():
         elif self.reference_cache:
             new_cache = self.reference_cache[:]
         else:
-            new_cache = gen_random_cache() # Just gen randomly
+            new_cache = self.gen_random_cache(None) # Just gen randomly
+
+        #print(f"({self.rank}) Initialised with cache {new_cache[self.rank]}")
 
         self.load_cache(new_cache)
 
@@ -85,17 +87,17 @@ class ExpertManager():
                 self.cache[i] = new_cache[i]        
     
     def get_cached(self):
-        return self.cache[:]
+        return copy.deepcopy(self.cache)
     
     def load_expert(self, expert_idx: int, load_idx: int): 
         if self.cache[self.rank][load_idx] == expert_idx:
             return
         # print(f"({self.rank}) loading expert {expert_idx}")
+        self.cache[self.rank][load_idx] = expert_idx
         with torch.no_grad():
             with torch.cuda.stream(self.stream):
                 for component in self.dynamic_components:
                     getattr(self.cached_experts[load_idx], component).weight.copy_(getattr(self.cpu_experts[f"expert_{expert_idx}"], component).weight)
-                self.cache[self.rank][load_idx] = expert_idx
                 self.is_slot_loaded[load_idx].record()
     
     # Returns index of expert.
@@ -106,11 +108,11 @@ class ExpertManager():
                 idx = i
                 break
         if idx == -1:
-            raise Exception("Expert is not cached.")
+            raise Exception(f"Expert {expert_idx} is not cached on rank {self.rank}.")
         return idx 
     
     def is_expert_loaded(self, expert_idx):
-        return self.expert_loaded_location(expert_idx) != -1
+        return expert_idx in self.cache[self.rank]
     
     def direct_execute_job(self, workload: list):
         for expert_idx in range(self.num_experts):
@@ -135,10 +137,13 @@ class ExpertManager():
                 expert_order.insert(0, expert_idx)
             else:
                 expert_order.append(expert_idx)
-        
+
+        #print(f"({self.rank}) has cache: {self.cache[self.rank]} and order: {expert_order}")
+        # exit(0)
+
         unused_expert_slots = []
         # Start loading as many experts as possible
-        for slot_idx, expert_idx in enumerate(self.cache):
+        for slot_idx, expert_idx in enumerate(self.cache[self.rank]):
             if expert_idx is None:
                 next_expert_idx = self.next_not_loaded_expert(expert_order)
                 if next_expert_idx is None:
@@ -146,7 +151,7 @@ class ExpertManager():
                 self.load_expert(next_expert_idx, slot_idx)
             elif expert_idx not in expert_order:
                 unused_expert_slots.append(slot_idx)
-
+        #print(f"({self.rank}) Unused expert slots: {unused_expert_slots}")
         # Fill every unused expert
         for slot_idx in unused_expert_slots:
             next_expert_idx = self.next_not_loaded_expert(expert_order)
@@ -154,17 +159,19 @@ class ExpertManager():
                 break
             self.load_expert(next_expert_idx, slot_idx)
         
+        #print(f"({self.rank}) begin execution with cache: {self.cache[self.rank]}")
         # Begin execution
         for idx, expert_idx in enumerate(expert_order):
             slot_idx = self.expert_loaded_location(expert_idx)
             self.is_slot_loaded[slot_idx].record()
             workload[expert_idx] = self.cached_experts[slot_idx](workload[expert_idx])
+            #print(f"({self.rank}) finished executing expert_{expert_idx}")
             # Check if anything else needs loading
             next_expert_idx = self.next_not_loaded_expert(expert_order, idx)
             if next_expert_idx is not None:
                 self.load_expert(next_expert_idx, slot_idx)
         
-        update_cache(schedule)
+        self.update_cache(schedule)
         
         return workload
 
@@ -175,7 +182,7 @@ class ExpertManager():
                 return experts[idx]
         return None
 
-    def update_cache(schedule):
+    def update_cache(self, schedule):
         if schedule == None:
             return # Do not update cache 
         
@@ -201,7 +208,7 @@ class ExpertManager():
     def gen_random_cache(self, _):
         expert_idxs = list(range(self.num_experts))
         self.rng.shuffle(expert_idxs)
-        new_cache = [experts_idx[i:i+self.cache_size] for i in range(0, self.cache_size*self.num_gpus, self.cache_size)]
+        new_cache = [expert_idxs[i:i+self.cache_size] for i in range(0, self.cache_size*self.num_gpus, self.cache_size)]
         return new_cache
     
     def gen_most_tokens_used_cache(self, schedule):

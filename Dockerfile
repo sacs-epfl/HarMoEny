@@ -6,7 +6,7 @@ ARG GROUP_ID
 ARG USER_NAME=userapp
 
 # Install system-wide packages
-RUN pip install huggingface_hub plotly datasets nvidia-ml-py3
+RUN pip install huggingface_hub plotly datasets nvidia-ml-py3 transformers
 RUN pip install -U kaleido
 
 # Create Triton directory
@@ -22,7 +22,6 @@ RUN mkdir -p /home/${USER_NAME}/.local && \
 
 # Set environment variables
 ENV PATH="/home/${USER_NAME}/.local/bin:${PATH}"
-# ENV PIP_TARGET=/home/${USER_NAME}/.local
 
 # Switch to non-root user
 USER ${USER_NAME}

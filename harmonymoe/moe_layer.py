@@ -104,7 +104,9 @@ class MoELayer(nn.Module):
         metadata_recv = [torch.zeros(self.num_experts, dtype=torch.int, device="cuda") for _ in range(self.num_gpus)]
 
         # Metadata all_to_all
+        #print(f"({self.rank}) metadata start")
         dist.all_to_all(metadata_recv, metadata_send)
+        #print(f"({self.rank}) metadata finish")
 
         # Create global schedule
         schedule = self.scheduler(metadata_recv, self.expert_manager.get_cached())
@@ -115,7 +117,9 @@ class MoELayer(nn.Module):
         tokens_recv = self.scheduler.allocate_recv_tensors(schedule)
         self.tot_num_toks_recv.append(sum(list(map(lambda x: x.shape[0], tokens_recv))))
         
+        #print(f"({self.rank}) tokens send for work")
         dist.all_to_all(tokens_recv, tokens_send)
+        #print(f"({self.rank}) tokens receive for work")
 
         expert_tokens = self.scheduler.group_experts(schedule, tokens_recv)
         
@@ -123,9 +127,15 @@ class MoELayer(nn.Module):
 
         tokens_recv = self.scheduler.ungroup_experts(schedule, expert_tokens)
 
+        #print(f"({self.rank}) tokens send after work")
         dist.all_to_all(tokens_send, tokens_recv)
+        #print(f"({self.rank}) tokens receive after work")
 
+        
+        print(f"({self.rank}) here on {self.layer_idx}")
+        # TODO understand why stuck on gather_tokens
         hidden_states = self.scheduler.gather_tokens(schedule, tokens_send, hidden_states, router_mask)
+        print(f"({self.rank}) done a forward pass on layer {self.layer_idx}")
 
         hidden_states = router_probs * hidden_states
         return hidden_states, (router_logits, expert_index)

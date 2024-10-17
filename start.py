@@ -22,8 +22,8 @@ from datasets import load_dataset
 from torch.utils.data import DataLoader, DistributedSampler, Dataset
 from transformers import AutoTokenizer, SwitchTransformersEncoderModel, SwitchTransformersForConditionalGeneration
 
-from scheduleatrix.utils import replace_moe_layer
-from scheduleatrix.moe_layer import MoEConfig
+from harmonymoe.utils import replace_moe_layer
+from harmonymoe.moe_layer import MoEConfig
 
 def str2bool(s):
     return s.lower() in ["yes", "y", "true", "t"]
