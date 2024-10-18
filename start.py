@@ -45,17 +45,23 @@ parser.add_argument("-d", "--dataset", default="sst2", type=str)
 parser.add_argument("-bs", "--batch_size", default=250, type=int, help="Batch size per GPU")
 parser.add_argument("-x", "--experiment", default="standard", type=str)
 parser.add_argument("-ec", "--expert_cache_size", default=2, type=int)
-parser.add_argument("-e", "--num_experts", default=8, type=int)
-parser.add_argument("-mt", "--model_type", default="encoder-decoder", type=str)
+# parser.add_argument("-e", "--num_experts", default=8, type=int)
+# parser.add_argument("-mt", "--model_type", default="encoder-decoder", type=str)
 parser.add_argument("-pa", "--path", default="outputs", type=str, help="Specify where to save path")
 parser.add_argument("-eq", "--eq_tokens", default=150, type=int)
 parser.add_argument("-dm", "--d_model", default=768, type=int)
+parser.add_argument("-m", "--model", default="google/switch-base-64", type=str, help="Huggingface model")
+parser.add_argument("-nm", "--name_moe_layer", default="SwitchTransformersSparseMLP", type=str, help="class name of model MoELayers")
+parser.add_argument("-nr", "--name_router", default="router", type=str, help="parameter name of router on MoE")
+parser.add_argument("-ne", "--name_experts", default="experts", type=str, help="parameter name of router on MoE")
+parser.add_argument("-nd", "--name_decoder", default="decoder", type=str, help="module name of model decoder")
+parser.add_argument("-dc", "--dynamic_components", default=["wi", "wo"], type=list, help="parameter names of expert changing weights")
 
 args = parser.parse_args()
 
-if args.num_experts not in [8, 16, 32, 64, 128, 256]:
-    print(f"There is no model with {args.num_experts} experts")
-    exit(1)
+# if args.num_experts not in [8, 16, 32, 64, 128, 256]:
+#     print(f"There is no model with {args.num_experts} experts")
+#     exit(1)
 
 if args.num_iters == 0 and args.num_samples == 0:
     print("You must either specify --num_iters or --num_samples")
@@ -159,31 +165,31 @@ def run_inference_workload(rank):
         ROOT = f"{args.path}/{datetime.today().strftime('%Y-%m-%d_%H-%M')}"
         setup(rank)
 
-        tokenizer = AutoTokenizer.from_pretrained("google/switch-base-8", cache_dir="/cache")
+        tokenizer = AutoTokenizer.from_pretrained(args.model, cache_dir="/cache")
         
-        if args.model_type == "encoder-decoder":
-            _class = SwitchTransformersForConditionalGeneration
-        elif args.model_type == "encoder":
-            _class = SwitchTransformersEncoderModel
-        else:
-            print("That model type is not yet implemented!")
-            exit(1)
+        # if args.model_type == "encoder-decoder":
+        #     _class = SwitchTransformersForConditionalGeneration
+        # elif args.model_type == "encoder":
+        #     _class = SwitchTransformersEncoderModel
+        # else:
+        #     print("That model type is not yet implemented!")
+        #     exit(1)
         
-        model = _class.from_pretrained(f"google/switch-base-{args.num_experts}", cache_dir="/cache")
+        model = _class.from_pretrained(args.model, cache_dir="/cache")
         config = MoEConfig(
             scheduling_policy=args.schedule,
             cache_policy=args.cache_policy,
             expert_cache_size=args.expert_cache_size,
-            dynamic_components=["wi", "wo"],
+            dynamic_components=args.dynamic_components,
             eq_tokens=args.eq_tokens,
             d_model=args.d_model,
         )
         moe_layers = replace_moe_layer(
             model, 
-            "SwitchTransformersSparseMLP", 
-            "router", 
-            "experts",
-            "decoder",
+            args.name_moe_layer, 
+            args.name_router, 
+            args.name_experts,
+            args.name_decoder,
             config,
         )
         model.cuda()
@@ -273,23 +279,28 @@ def create_save_dir_if_not_exist(path):
 
 def save_run_info(path):
      with open(f"{path}/data.json", "w") as f:
-        json.dump({
-            "scheduling_policy": args.schedule,
-            "cache_policy": args.cache_policy,
-            "batch_size": args.batch_size,
-            "world_size": args.world,
-            "dataset": args.dataset,
-            "seq_len": args.seq_len,
-            "num_iters": args.num_iters,
-            "num_samples": args.num_samples,
-            "port": args.port,
-            "experiment": args.experiment,
-            "expert_cache_size": args.expert_cache_size,
-            "num_experts": args.num_experts,
-            "model_type": args.model_type,
-            "eq_tokens": args.eq_tokens,
-            "d_model": args.d_model,
-        }, f)
+        json.dump(vars(args), f)
+        # json.dump({
+        #     "scheduling_policy": args.schedule,
+        #     "cache_policy": args.cache_policy,
+        #     "batch_size": args.batch_size,
+        #     "world_size": args.world,
+        #     "dataset": args.dataset,
+        #     "model": args.model,
+        #     "seq_len": args.seq_len,
+        #     "num_iters": args.num_iters,
+        #     "num_samples": args.num_samples,
+        #     "port": args.port,
+        #     "experiment": args.experiment,
+        #     "expert_cache_size": args.expert_cache_size,
+        #     "eq_tokens": args.eq_tokens,
+        #     "d_model": args.d_model,
+        #     "name_moe_layer": args.name_moe_layer,
+        #     "name_router": args.name_router,
+        #     "name_experts": args.name_experts,
+        #     "name_decoder": args.name_decoder,
+        #     "dynamic_components": args.dynamic_components,
+        # }, f)
 
 def signal_handler(sig, frame):
     print("Main process received Ctrl+C! Terminating all child processes...")
