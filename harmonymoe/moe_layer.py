@@ -42,7 +42,7 @@ class MoELayer(nn.Module):
 
         # Create our scheduler and exper manager
         self.scheduler = Scheduler(
-            scheduling_policy=config.scheduling_policy,# if not self.is_decoder else "deepspeed", 
+            scheduling_policy=config.scheduling_policy if not self.is_decoder else "deepspeed", 
             num_experts=self.num_experts,
             eq_tokens=config.eq_tokens,
             d_model=config.d_model,

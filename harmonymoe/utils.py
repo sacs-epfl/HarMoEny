@@ -15,6 +15,8 @@ def _replace_moe_layer(model, target, is_decoder, layer_idx, router_name, expert
             if type(child).__name__ == target:
                 router = getattr(child, router_name)
                 experts = getattr(child, experts_name)
+                if isinstance(experts, nn.ModuleDict):
+                    experts = nn.ModuleList(experts.values())
 
                 config.is_decoder = is_decoder
                 config.layer_idx = layer_idx[0]
