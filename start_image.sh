@@ -4,4 +4,4 @@ docker run -it \
     -v .:/workspace \
     -v /raid/citadel/cache:/cache \
     moe:latest \
-    /workspace/docker_startup.sh
+    /bin/bash

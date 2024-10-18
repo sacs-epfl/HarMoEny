@@ -29,15 +29,15 @@ def plot_e2e(dirs: [str]):
         df = pd.read_csv(f"{_dir}/0/e2e.csv")
         data = read_data(_dir)
 
-        df["name"] = data["name"]
+        df["scheduling_policy"] = data["scheduling_policy"]
 
         frames.append(df)
 
     df = pd.concat(frames)
-    df = df.sort_values(["name", "Iteration Number"])
+    df = df.sort_values(["scheduling_policy", "Iteration Number"])
     df = df[df["Iteration Number"] > 3]
 
-    fig = px.line(df, x="Iteration Number", y="Latency (s)", color="name")
+    fig = px.line(df, x="Iteration Number", y="Latency (s)", color="scheduling_policy")
     fig.update_yaxes(rangemode="tozero")
     update_fig_to_theme(fig)
 
@@ -76,14 +76,14 @@ def plot_imbalance_and_oversubscription(dirs: [str]):
         df_combined["oversubscription"] = ((df_combined["max"] - df_combined["avg"]) / df_combined["avg"]) *100
 
 
-        df_combined["name"] = data["name"]
-        final_frames.append(df_combined[["name", "iteration", "imbalance", "oversubscription"]])
+        df_combined["scheduling_policy"] = data["scheduling_policy"]
+        final_frames.append(df_combined[["scheduling_policy", "iteration", "imbalance", "oversubscription"]])
     
     df = pd.concat(final_frames)
-    df = df.sort_values(["name", "iteration"])
+    df = df.sort_values(["scheduling_policy", "iteration"])
     df = df[df["iteration"] > 3]
 
-    fig = px.line(df, x="iteration", y="imbalance", color="name", labels={"iteration": "Iteration Number", "imbalance": "Imbalance (relative %)"})
+    fig = px.line(df, x="iteration", y="imbalance", color="scheduling_policy", labels={"iteration": "Iteration Number", "imbalance": "Imbalance (relative %)"})
     fig.update_yaxes(rangemode="tozero")
     update_fig_to_theme(fig)
 
@@ -91,7 +91,7 @@ def plot_imbalance_and_oversubscription(dirs: [str]):
     fig.write_image(f"{OUTPUT_DIR}/imbalance.png")
 
 
-    fig = px.line(df, x="iteration", y="oversubscription", color="name", labels={"iteration": "Iteration Number", "oversubscription": "Oversubscription (relative %)"})
+    fig = px.line(df, x="iteration", y="oversubscription", color="scheduling_policy", labels={"iteration": "Iteration Number", "oversubscription": "Oversubscription (relative %)"})
     fig.update_yaxes(rangemode="tozero")
     update_fig_to_theme(fig)
 
@@ -102,7 +102,7 @@ def plot_average_speedup(comparison: str, dirs: [str]):
     for _dir in dirs:
         df = pd.read_csv(f"{_dir}/0/e2e.csv")
         data = read_data(_dir)
-        df = df.rename(columns={"Latency (s)": data["name"]})
+        df = df.rename(columns={"Latency (s)": data["scheduling_policy"]})
         frames.append(df)
     if len(frames) < 1:
         print("No data to work on, finishing plot_average_speedup")
@@ -146,7 +146,7 @@ def plot_overall_speedup(comparison: str, dirs: [str]):
     for _dir in dirs:
         df = pd.read_csv(f"{_dir}/0/e2e.csv")
         data = read_data(_dir)
-        df = df.rename(columns={"Latency (s)": data["name"]})
+        df = df.rename(columns={"Latency (s)": data["scheduling_policy"]})
         frames.append(df)
     if len(frames) < 1:
         print("No data to work on, finishing plot_overall_speedup")
@@ -201,7 +201,7 @@ def plot_throughput(comparison: str, dirs: [str]):
         data = read_data(_dir)
         num_samples = int(data["world_size"]) * int(data["batch_size"]) * num_iters
 
-        throughput["policy"].append(data["name"])
+        throughput["policy"].append(data["scheduling_policy"])
         throughput["throughput"].append(num_samples / df["Latency (s)"])
     
     df = pd.DataFrame(throughput)
@@ -257,7 +257,7 @@ def plot_speedup_across_metric(metric: str, dirs: [str]):
         data = read_data(_dir)
         values.append({
             "metric": data[metric],
-            "policy": data["name"],
+            "policy": data["scheduling_policy"],
             "time": df["Latency (s)"]
         })
 
@@ -288,7 +288,7 @@ def plot_imbalance_and_oversubscription_across_metric(metric: str, dirs: [str]):
 
         interm2 = []
 
-        for z in [1,3,5,7,9,11]: 
+        for z in [0,1,2,3,4,5]: 
             interm = []
 
             ranks = list(range(int(data["world_size"])))
@@ -324,7 +324,7 @@ def plot_imbalance_and_oversubscription_across_metric(metric: str, dirs: [str]):
 
         values.append({
             "metric": data[metric],
-            "policy": data["name"],
+            "policy": data["scheduling_policy"],
             "imbalance": df["imbalance"].mean(axis=0),
             "oversubscription": df["oversubscription"].mean(axis=0)
         })
@@ -369,4 +369,4 @@ else:
         plot_speedup_across_metric(metric, sys.argv[3:])
         plot_imbalance_and_oversubscription_across_metric(metric, sys.argv[3:])
     else:
-        print("No plotting type of that name")
+        print("No plotting type of that scheduling_policy")
