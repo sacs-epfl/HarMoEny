@@ -172,6 +172,7 @@ def run_inference_workload(rank):
         model = _class.from_pretrained(f"google/switch-base-{args.num_experts}", cache_dir="/cache")
         config = MoEConfig(
             scheduling_policy=args.schedule,
+            cache_policy=args.cache_policy,
             expert_cache_size=args.expert_cache_size,
             dynamic_components=["wi", "wo"],
             eq_tokens=args.eq_tokens,

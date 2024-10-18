@@ -288,7 +288,7 @@ def plot_imbalance_and_oversubscription_across_metric(metric: str, dirs: [str]):
 
         interm2 = []
 
-        for z in [1,3,5,7,9,11]: 
+        for z in [0,1,2,3,4,5]: 
             interm = []
 
             ranks = list(range(int(data["world_size"])))

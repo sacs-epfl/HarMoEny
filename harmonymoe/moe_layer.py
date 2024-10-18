@@ -36,10 +36,13 @@ class MoELayer(nn.Module):
         # For statistics 
         self.tot_num_toks_send = []
         self.tot_num_toks_recv = []
+        self.latencies = []
+        self.start_event = torch.cuda.Event(enable_timing=True)
+        self.end_event = torch.cuda.Event(enable_timing=True)
 
         # Create our scheduler and exper manager
         self.scheduler = Scheduler(
-            scheduling_policy=config.scheduling_policy if not self.is_decoder else "deepspeed", 
+            scheduling_policy=config.scheduling_policy,# if not self.is_decoder else "deepspeed", 
             num_experts=self.num_experts,
             eq_tokens=config.eq_tokens,
             d_model=config.d_model,
@@ -66,7 +69,7 @@ class MoELayer(nn.Module):
             path += "_decode"
 
         with open(f"{path}.csv", "w") as f:
-            fieldnames = ["iteration", "total number of tokens sent", "total number of tokens recv"]
+            fieldnames = ["iteration", "total number of tokens sent", "total number of tokens recv", "latency"]
 
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
@@ -76,12 +79,15 @@ class MoELayer(nn.Module):
                     "iteration": i,
                     "total number of tokens sent": self.tot_num_toks_send[i],
                     "total number of tokens recv": self.tot_num_toks_recv[i],
+                    "latency": self.latencies[i],
                 }
              
                 writer.writerow(dic)
 
     @torch.no_grad()
     def forward(self, hidden_states):
+        self.start_event.record()
+
         router_mask, router_probs, router_logits = self.router(hidden_states)
         # router_mask has dim (batch_size, seq_len, num_experts)
         # Entry will be a 1 on which expert to work on for the specific token
@@ -104,9 +110,7 @@ class MoELayer(nn.Module):
         metadata_recv = [torch.zeros(self.num_experts, dtype=torch.int, device="cuda") for _ in range(self.num_gpus)]
 
         # Metadata all_to_all
-        #print(f"({self.rank}) metadata start")
         dist.all_to_all(metadata_recv, metadata_send)
-        #print(f"({self.rank}) metadata finish")
 
         # Create global schedule
         schedule = self.scheduler(metadata_recv, self.expert_manager.get_cached())
@@ -117,25 +121,21 @@ class MoELayer(nn.Module):
         tokens_recv = self.scheduler.allocate_recv_tensors(schedule)
         self.tot_num_toks_recv.append(sum(list(map(lambda x: x.shape[0], tokens_recv))))
         
-        #print(f"({self.rank}) tokens send for work")
         dist.all_to_all(tokens_recv, tokens_send)
-        #print(f"({self.rank}) tokens receive for work")
 
         expert_tokens = self.scheduler.group_experts(schedule, tokens_recv)
         
-        expert_tokens = self.expert_manager(expert_tokens)
+        expert_tokens = self.expert_manager(expert_tokens, schedule=schedule)
 
         tokens_recv = self.scheduler.ungroup_experts(schedule, expert_tokens)
 
-        #print(f"({self.rank}) tokens send after work")
         dist.all_to_all(tokens_send, tokens_recv)
-        #print(f"({self.rank}) tokens receive after work")
 
-        
-        print(f"({self.rank}) here on {self.layer_idx}")
-        # TODO understand why stuck on gather_tokens
         hidden_states = self.scheduler.gather_tokens(schedule, tokens_send, hidden_states, router_mask)
-        print(f"({self.rank}) done a forward pass on layer {self.layer_idx}")
+
+        self.end_event.record()
+        self.end_event.synchronize()
+        self.latencies.append(self.start_event.elapsed_time(self.end_event))
 
         hidden_states = router_probs * hidden_states
         return hidden_states, (router_logits, expert_index)
