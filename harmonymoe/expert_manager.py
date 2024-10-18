@@ -5,7 +5,7 @@ import copy
 import random
 
 class ExpertManager():
-    def __init__(self, experts: nn.ModuleDict, cache_size: int, dynamic_components: list, fixed_cache=None, reference_cache=None, cache_policy="MTU"):
+    def __init__(self, experts: nn.ModuleList, cache_size: int, dynamic_components: list, fixed_cache=None, reference_cache=None, cache_policy="MTU"):
         self.cpu_experts = experts
         self.num_experts = len(experts)
         self.rank = dist.get_rank()
@@ -26,7 +26,7 @@ class ExpertManager():
         self.stream = torch.cuda.Stream()
 
         # Duplicate an expert cache_size times onto GPU
-        self.cached_experts = [copy.deepcopy(experts["expert_0"]).cuda() for _ in range(self.cache_size)]
+        self.cached_experts = [copy.deepcopy(experts[0]).cuda() for _ in range(self.cache_size)]
         self.is_slot_loaded = [torch.cuda.Event(enable_timing=False) for _ in range(self.cache_size)]
     
     def validate_arguments(self):
@@ -102,7 +102,7 @@ class ExpertManager():
         with torch.no_grad():
             with torch.cuda.stream(self.stream):
                 for component in self.dynamic_components:
-                    getattr(self.cached_experts[load_idx], component).weight.copy_(getattr(self.cpu_experts[f"expert_{expert_idx}"], component).weight)
+                    getattr(self.cached_experts[load_idx], component).weight.copy_(getattr(self.cpu_experts[expert_idx], component).weight)
                 self.is_slot_loaded[load_idx].record()
     
     # Returns index of expert.
