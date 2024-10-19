@@ -1,3 +1,5 @@
+import torch.nn as nn
+
 from .moe_layer import MoELayer
 
 def replace_moe_layer(model, target, router_name, experts_name, decoder_name, config):

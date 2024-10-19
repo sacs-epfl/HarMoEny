@@ -17,13 +17,11 @@ import math
 import random
 from tqdm import tqdm
 
-import datasets
-from datasets import load_dataset
-from torch.utils.data import DataLoader, DistributedSampler, Dataset
-from transformers import AutoTokenizer, SwitchTransformersEncoderModel, SwitchTransformersForConditionalGeneration
+from torch.utils.data import DataLoader, DistributedSampler
+from transformers import AutoTokenizer
 
-from harmonymoe.utils import replace_moe_layer
-from harmonymoe.moe_layer import MoEConfig
+from testing.flexible_dataset import FlexibleDataset
+from testing.modelling import Modelling
 
 def str2bool(s):
     return s.lower() in ["yes", "y", "true", "t"]
@@ -39,7 +37,7 @@ parser.add_argument("-ni", "--num_iters", default=0, type=int)
 parser.add_argument("-ns", "--num_samples", default=0, type=int, help="Number of total samples")
 parser.add_argument("-w", "--world", default=torch.cuda.device_count(), type=int)
 parser.add_argument("-p", "--port", default="1234", type=str)
-parser.add_argument("-s", "--schedule", default="deepspeed", type=str)
+parser.add_argument("-s", "--scheduling_policy", default="deepspeed", type=str)
 parser.add_argument("-cp", "--cache_policy", default="RAND", type=str)
 parser.add_argument("-d", "--dataset", default="sst2", type=str)
 parser.add_argument("-bs", "--batch_size", default=250, type=int, help="Batch size per GPU")
@@ -50,12 +48,13 @@ parser.add_argument("-ec", "--expert_cache_size", default=2, type=int)
 parser.add_argument("-pa", "--path", default="outputs", type=str, help="Specify where to save path")
 parser.add_argument("-eq", "--eq_tokens", default=150, type=int)
 parser.add_argument("-dm", "--d_model", default=768, type=int)
-parser.add_argument("-m", "--model", default="google/switch-base-64", type=str, help="Huggingface model")
+parser.add_argument("-m", "--model_name", default="google/switch-base-64", type=str, help="Huggingface model")
 parser.add_argument("-nm", "--name_moe_layer", default="SwitchTransformersSparseMLP", type=str, help="class name of model MoELayers")
 parser.add_argument("-nr", "--name_router", default="router", type=str, help="parameter name of router on MoE")
 parser.add_argument("-ne", "--name_experts", default="experts", type=str, help="parameter name of router on MoE")
 parser.add_argument("-nd", "--name_decoder", default="decoder", type=str, help="module name of model decoder")
 parser.add_argument("-dc", "--dynamic_components", default=["wi", "wo"], type=list, help="parameter names of expert changing weights")
+parser.add_argument("-sys", "--system", default="harmony", type=str)
 
 args = parser.parse_args()
 
@@ -63,14 +62,15 @@ args = parser.parse_args()
 #     print(f"There is no model with {args.num_experts} experts")
 #     exit(1)
 
+## Validation
 if args.num_iters == 0 and args.num_samples == 0:
     print("You must either specify --num_iters or --num_samples")
     exit(1)
 
-if args.num_iters != 0:
-    DESIRED_DATASET_SIZE = args.num_iters * args.batch_size * args.world
-else:
-    DESIRED_DATASET_SIZE = args.num_samples
+# if args.num_iters != 0:
+#     DESIRED_DATASET_SIZE = 
+# else:
+#     DESIRED_DATASET_SIZE = args.num_samples
 
 def setup(rank):
     os.environ["MASTER_ADDR"] = "localhost"
@@ -95,77 +95,13 @@ def cleanup():
 #             # If it's a leaf module (no children) and not part of experts, move to CUDA
 #             module.cuda()
 
-
-class FlexibleDataset(Dataset):
-    def __init__(self, tokenizer, model, random_seed=32):
-        self.tokenizer = tokenizer
-        self.model_config = model.config
-        self.max_length = args.seq_len
-        self.dataset_option = args.dataset
-        torch.manual_seed(random_seed)
-
-        if self.dataset_option == "bookcorpus":
-            self.dataset = load_dataset("bookcorpus/bookcorpus", split=f"train[:{DESIRED_DATASET_SIZE}]", streaming=False, trust_remote_code=True, cache_dir="/cache")
-        elif self.dataset_option == "wikitext":
-            self.dataset = load_dataset("wikitext", "wikitext-103-raw-v1", split=f"train[:{DESIRED_DATASET_SIZE}]", streaming=False, cache_dir="/cache")
-        elif self.dataset_option == "sst2":
-            self.dataset = load_dataset("glue", "sst2", split=f"train[:{DESIRED_DATASET_SIZE}]", streaming=False, cache_dir="/cache")
-        elif self.dataset_option == "wmt19":
-            self.dataset = load_dataset("wmt/wmt19", "de-en", split=f"train[:{DESIRED_DATASET_SIZE}]", streaming=False, cache_dir="/cache")
-        elif self.dataset_option == "random":
-            pass
-        else:
-            raise ValueError("Invalid dataset option")
-
-        if self.dataset_option != "random":
-            self.dataset_size = len(self.dataset)
-        else:
-            self.dataset_size = DESIRED_DATASET_SIZE
-
-    def __len__(self):
-        return self.dataset_size
-
-    def __getitem__(self, idx):
-        if self.dataset_option == "bookcorpus" or self.dataset_option == "wikitext":
-            encoder = "summarize: " + self.dataset[idx]["text"]
-        elif self.dataset_option == "sst2":
-            encoder = "summarize: " + self.dataset[idx]["sentence"]
-        elif self.dataset_option == "wmt19":
-            encoder = "translate English to German: " + self.dataset[idx]["translation"]["en"]
-        elif self.dataset_option == "random":
-            encoder = ["summarize:"]
-            vocab_size = self.tokenizer.vocab_size
-
-            for _ in range(args.seq_len):
-                # Add a random token to the array
-                random_token_id = random.randint(0, vocab_size-1)
-                random_token = self.tokenizer.decode(random_token_id)
-                encoder.append(random_token)
-
-            encoder = " ".join(encoder)
-
-        if args.batch_size == 1:
-            encoder_tokenized = self.tokenizer(encoder, truncation=True, max_length=self.max_length, return_tensors="pt")
-        else:
-            encoder_tokenized = self.tokenizer(encoder, padding="max_length", truncation=True, max_length=self.max_length, return_tensors="pt")
-        
-        dic = {
-            "input_ids": encoder_tokenized["input_ids"].squeeze(0),
-            "attention_mask": encoder_tokenized["attention_mask"].squeeze(0),
-        }
-
-        if args.model_type == "encoder-decoder":
-            dic["decoder_input_ids"] = torch.tensor([self.model_config.pad_token_id])
-
-        return dic
-
 def run_inference_workload(rank):
     try:
         mp.current_process().name = f'Worker-{rank}'
         ROOT = f"{args.path}/{datetime.today().strftime('%Y-%m-%d_%H-%M')}"
         setup(rank)
 
-        tokenizer = AutoTokenizer.from_pretrained(args.model, cache_dir="/cache")
+        tokenizer = AutoTokenizer.from_pretrained(args.model_name, cache_dir="/cache")
         
         # if args.model_type == "encoder-decoder":
         #     _class = SwitchTransformersForConditionalGeneration
@@ -175,37 +111,35 @@ def run_inference_workload(rank):
         #     print("That model type is not yet implemented!")
         #     exit(1)
         
-        model = _class.from_pretrained(args.model, cache_dir="/cache")
-        config = MoEConfig(
-            scheduling_policy=args.schedule,
-            cache_policy=args.cache_policy,
-            expert_cache_size=args.expert_cache_size,
-            dynamic_components=args.dynamic_components,
-            eq_tokens=args.eq_tokens,
-            d_model=args.d_model,
-        )
-        moe_layers = replace_moe_layer(
-            model, 
-            args.name_moe_layer, 
-            args.name_router, 
-            args.name_experts,
-            args.name_decoder,
-            config,
-        )
+        model = Modelling(**vars(args))
         model.cuda()
+        model.eval()
 
         # move_to_cuda_except_experts(model)
         # model.expert_parallelise()
 
-        datasets.enable_caching()
-        flexible_dataset = FlexibleDataset(tokenizer, model)
-        sampler = DistributedSampler(flexible_dataset, num_replicas=args.world, rank=rank, shuffle=True, seed=49)
-        loader = DataLoader(flexible_dataset, sampler=sampler, batch_size=args.batch_size)
-
-        model.eval()
+        flexible_dataset = FlexibleDataset(
+            args.dataset, 
+            tokenizer, 
+            model, 
+            seq_len=args.seq_len,
+            num_samples=args.num_samples if args.num_samples != 0 else args.num_iters * args.batch_size * args.world
+        )
+        sampler = DistributedSampler(
+            flexible_dataset, 
+            num_replicas=args.world, 
+            rank=rank, 
+            shuffle=True, 
+            seed=49
+        )
+        loader = DataLoader(
+            flexible_dataset, 
+            sampler=sampler, 
+            batch_size=args.batch_size
+        )
 
         if args.experiment == "standard":
-            run_standard_experiment(model, moe_layers, tokenizer, loader, f"{ROOT}/{rank}")
+            run_standard_experiment(model, tokenizer, loader, f"{ROOT}/{rank}")
             if rank == 0:
                 save_run_info(ROOT)
         else:
@@ -217,14 +151,15 @@ def run_inference_workload(rank):
     finally:
         cleanup()
 
-def run_standard_experiment(model, moe_layers, tokenizer, loader, path):
+def run_standard_experiment(model, tokenizer, loader, path):
     latencies = []
     
     with torch.no_grad():
         for batch in tqdm(loader):
             start = time.time()
             batch = {k: v.cuda() for k, v in batch.items()}
-            outputs = model(**batch)
+            model(batch)
+            # outputs = model(**batch)
             # if args.model_type == "encoder-decoder":
             #     probs = F.softmax(outputs.logits, dim=-1)
             #     predicted_token_ids = torch.argmax(probs, dim=-1)
@@ -234,9 +169,9 @@ def run_standard_experiment(model, moe_layers, tokenizer, loader, path):
     
 
     create_save_dir_if_not_exist(path)
-
-    for moe_layer in moe_layers:
-        moe_layer.save_statistics(DIR=path)
+    model.save_statistics(path)
+    # for moe_layer in moe_layers:
+    #     moe_layer.save_statistics(DIR=path)
 
     file_path = f"{path}/e2e.csv"
     with open(file_path, "w") as f:
