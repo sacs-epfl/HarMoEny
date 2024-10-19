@@ -52,7 +52,7 @@ parser.add_argument("-nr", "--name_router", default="router", type=str, help="pa
 parser.add_argument("-ne", "--name_experts", default="experts", type=str, help="parameter name of router on MoE")
 parser.add_argument("-nd", "--name_decoder", default="decoder", type=str, help="module name of model decoder")
 parser.add_argument("-dc", "--dynamic_components", default=["wi", "wo"], type=list, help="parameter names of expert changing weights")
-parser.add_argument("-sys", "--system", default="harmony", type=str)
+parser.add_argument("-sys", "--system_name", default="harmony", type=str)
 
 args = parser.parse_args()
 
