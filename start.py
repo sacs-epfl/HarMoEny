@@ -21,7 +21,7 @@ from torch.utils.data import DataLoader, DistributedSampler
 from transformers import AutoTokenizer
 
 from testing.flexible_dataset import FlexibleDataset
-from testing.modelling import Modelling
+from testing.modeling import Modeling
 
 def str2bool(s):
     return s.lower() in ["yes", "y", "true", "t"]
@@ -80,9 +80,10 @@ def run_inference_workload(rank):
 
         tokenizer = AutoTokenizer.from_pretrained(args.model_name, cache_dir="/cache")
         
-        model = Modelling(**vars(args))
-        model.cuda()
+        model = Modeling(**vars(args))
         model.eval()
+        model.cuda()
+        
 
         flexible_dataset = FlexibleDataset(
             args.dataset, 
