@@ -23,21 +23,21 @@ def read_data(_dir: str):
     with open(f"{_dir}/data.json", "r") as f:
         return json.load(f)
 
-def plot_e2e(dirs: [str]):
+def plot_e2e(variable: str, dirs: [str]):
     frames = []
     for _dir in dirs:
         df = pd.read_csv(f"{_dir}/0/e2e.csv")
         data = read_data(_dir)
 
-        df["scheduling_policy"] = data["scheduling_policy"]
+        df[variable] = data[variable]
 
         frames.append(df)
 
     df = pd.concat(frames)
-    df = df.sort_values(["scheduling_policy", "Iteration Number"])
+    df = df.sort_values([variable, "Iteration Number"])
     df = df[df["Iteration Number"] > 3]
 
-    fig = px.line(df, x="Iteration Number", y="Latency (s)", color="scheduling_policy")
+    fig = px.line(df, x="Iteration Number", y="Latency (s)", color=variable)
     fig.update_yaxes(rangemode="tozero")
     update_fig_to_theme(fig)
 
@@ -45,15 +45,19 @@ def plot_e2e(dirs: [str]):
     fig.write_image(f"{OUTPUT_DIR}/e2e.png")
 
 
-def plot_imbalance_and_oversubscription(dirs: [str]):
+def plot_imbalance_and_oversubscription(variable: str, dirs: [str]):
     final_frames = []
     for _dir in dirs:
         data = read_data(_dir)
-        num_gpus = int(data["world_size"])
+        num_gpus = int(data["world"])
 
         frames = []
         for rank in range(num_gpus):
-            df = pd.read_csv(f"{_dir}/{rank}/moe_l1.csv")
+            if not os.path.exists(f"{_dir}/{rank}/moe_l0.csv"):
+                print(f"{_dir} has no breakdown per layer. Skipping.")
+                return 
+
+            df = pd.read_csv(f"{_dir}/{rank}/moe_l0.csv")
 
             df_select = df[["total number of tokens recv"]]
 
@@ -76,14 +80,14 @@ def plot_imbalance_and_oversubscription(dirs: [str]):
         df_combined["oversubscription"] = ((df_combined["max"] - df_combined["avg"]) / df_combined["avg"]) *100
 
 
-        df_combined["scheduling_policy"] = data["scheduling_policy"]
-        final_frames.append(df_combined[["scheduling_policy", "iteration", "imbalance", "oversubscription"]])
+        df_combined[variable] = data[variable]
+        final_frames.append(df_combined[[variable, "iteration", "imbalance", "oversubscription"]])
     
     df = pd.concat(final_frames)
-    df = df.sort_values(["scheduling_policy", "iteration"])
+    df = df.sort_values([variable, "iteration"])
     df = df[df["iteration"] > 3]
 
-    fig = px.line(df, x="iteration", y="imbalance", color="scheduling_policy", labels={"iteration": "Iteration Number", "imbalance": "Imbalance (relative %)"})
+    fig = px.line(df, x="iteration", y="imbalance", color=variable, labels={"iteration": "Iteration Number", "imbalance": "Imbalance (relative %)"})
     fig.update_yaxes(rangemode="tozero")
     update_fig_to_theme(fig)
 
@@ -91,7 +95,7 @@ def plot_imbalance_and_oversubscription(dirs: [str]):
     fig.write_image(f"{OUTPUT_DIR}/imbalance.png")
 
 
-    fig = px.line(df, x="iteration", y="oversubscription", color="scheduling_policy", labels={"iteration": "Iteration Number", "oversubscription": "Oversubscription (relative %)"})
+    fig = px.line(df, x="iteration", y="oversubscription", color=variable, labels={"iteration": "Iteration Number", "oversubscription": "Oversubscription (relative %)"})
     fig.update_yaxes(rangemode="tozero")
     update_fig_to_theme(fig)
 
@@ -141,15 +145,15 @@ def plot_average_speedup(comparison: str, dirs: [str]):
     create_dir_if_needed()
     fig.write_image(f"{OUTPUT_DIR}/average_speedup.png")
 
-def plot_overall_speedup(comparison: str, dirs: [str]):
+def plot_overall_e2e(variable: str, comparison: str, dirs: [str]):
     frames = []
     for _dir in dirs:
         df = pd.read_csv(f"{_dir}/0/e2e.csv")
         data = read_data(_dir)
-        df = df.rename(columns={"Latency (s)": data["scheduling_policy"]})
+        df = df.rename(columns={"Latency (s)": data[variable]})
         frames.append(df)
     if len(frames) < 1:
-        print("No data to work on, finishing plot_overall_speedup")
+        print("No data to work on, finishing plot_overall_e2e")
         return
     comb_df = frames[0]
     for df in frames[1:]:
@@ -169,7 +173,7 @@ def plot_overall_speedup(comparison: str, dirs: [str]):
     df_speedup = df[comparison] / df
 
     plot_df = pd.DataFrame({
-        'scheduling_policy': df.index,
+        variable: df.index,
         'workload_duration': df.values,
         'speedup': df_speedup.values,
         'label': [f"{value:.2f} ({speedup:.2f}x)" for value, speedup in zip(df, df_speedup)]
@@ -177,7 +181,7 @@ def plot_overall_speedup(comparison: str, dirs: [str]):
     plot_df['label'] = plot_df['label'].astype(str)
 
     fig = px.bar(plot_df, 
-                 x='scheduling_policy', 
+                 x=variable, 
                  y='workload_duration', 
                  text='label',
                  labels={"scheduling_policy": "scheduling policy", 
@@ -358,12 +362,13 @@ if len(sys.argv) == 2:
 else:
     plotting_type = sys.argv[1]
     if plotting_type == "single":
-        comparison = sys.argv[2]
-        plot_e2e(sys.argv[3:])
-        plot_imbalance_and_oversubscription(sys.argv[3:])
-        plot_average_speedup(comparison, sys.argv[3:])
-        plot_overall_speedup(comparison, sys.argv[3:])
-        plot_throughput(comparison, sys.argv[3:])
+        variable = sys.argv[2]
+        baseline = sys.argv[3]
+        plot_e2e(variable, sys.argv[4:])
+        plot_imbalance_and_oversubscription(variable, sys.argv[4:])
+        plot_overall_e2e(variable, baseline, sys.argv[4:])
+        # Throughput a pretty irrelevant metric given e2e
+        #plot_throughput(baseline, sys.argv[3:])
     elif plotting_type == "metric":
         metric = sys.argv[2]
         plot_speedup_across_metric(metric, sys.argv[3:])
