@@ -18,6 +18,7 @@ class MoEConfig:
     dynamic_components: any = None
     eq_tokens: int = 150
     d_model: int = 768
+    max_num_toks_local: int = 12000
 
 class MoELayer(nn.Module):
     def __init__(self, router, experts, config=MoEConfig):
@@ -46,6 +47,7 @@ class MoELayer(nn.Module):
             num_experts=self.num_experts,
             eq_tokens=config.eq_tokens,
             d_model=config.d_model,
+            max_num_toks_local=config.max_num_toks_local,
         )
 
         self.expert_manager = ExpertManager(
@@ -88,6 +90,8 @@ class MoELayer(nn.Module):
     def forward(self, hidden_states):
         self.start_event.record()
 
+        #print(f"Hidden states shape: {hidden_states.shape}")
+
         router_mask, router_probs, router_logits = self.router(hidden_states)
         # router_mask has dim (batch_size, seq_len, num_experts)
         # Entry will be a 1 on which expert to work on for the specific token
@@ -96,42 +100,54 @@ class MoELayer(nn.Module):
         expert_index = torch.argmax(router_mask, dim=-1)
         router_mask = router_mask.bool()
 
-        num_toks_per_expert = []
+        # num_toks_per_expert = []
 
-        # Collect some stats
-        tot = 0
-        for j in range(self.num_experts):
-            size = hidden_states[router_mask[:,:,j]].shape[0]
-            num_toks_per_expert.append(size)
-            tot += size
-        self.tot_num_toks_send.append(tot)
+        # # Collect some stats
+        # tot = 0
+        # for j in range(self.num_experts):
+        #     size = hidden_states[router_mask[:,:,j]].shape[0]
+        #     num_toks_per_expert.append(size)
+        #     tot += size
+        # self.tot_num_toks_send.append(tot)
+        # avg = tot // num_gpus
         
-        metadata_send = [torch.tensor(num_toks_per_expert, dtype=torch.int, device="cuda") for _ in range(self.num_gpus)]
-        metadata_recv = [torch.zeros(self.num_experts, dtype=torch.int, device="cuda") for _ in range(self.num_gpus)]
+        # Let us skip the first metadata all_to_all to see if we get improvement
+        # metadata_send = [torch.tensor(num_toks_per_expert, dtype=torch.int, device="cuda") for _ in range(self.num_gpus)]
+        # metadata_recv = [torch.zeros(self.num_experts, dtype=torch.int, device="cuda") for _ in range(self.num_gpus)]
 
-        # Metadata all_to_all
-        dist.all_to_all(metadata_recv, metadata_send)
+        # # Metadata all_to_all
+        # dist.all_to_all(metadata_recv, metadata_send)
+
 
         # Create global schedule
-        schedule = self.scheduler(metadata_recv, self.expert_manager.get_cached())
+        expert_toks_amt = [hidden_states[router_mask[:,:,i]].shape[0] for i in range(self.num_experts)]
+        schedule = self.scheduler(expert_toks_amt, self.expert_manager.get_cached())
+        # print(f"Amt before: {sum(expert_toks_amt)} compared to: {sum(map(lambda arr: sum(arr), schedule))}")
+        # exit(0)
 
         # Turn schedule and hidden_states into array of tensors
         # to distribute to each GPU
         tokens_send = self.scheduler.distribute_tokens(schedule, hidden_states, router_mask)
-        tokens_recv = self.scheduler.allocate_recv_tensors(schedule)
-        self.tot_num_toks_recv.append(sum(list(map(lambda x: x.shape[0], tokens_recv))))
+        tokens_recv = self.scheduler.allocate_recv_tensors()
+
+        #self.tot_num_toks_recv.append(sum(list(map(lambda x: x.shape[0], tokens_recv))))
         
         dist.all_to_all(tokens_recv, tokens_send)
+        # print("Finished all_to_all")
+        # exit(0)
 
-        expert_tokens = self.scheduler.group_experts(schedule, tokens_recv)
+        # TODO fix
+        expert_tokens = self.scheduler.group_experts(tokens_recv)
         
         expert_tokens = self.expert_manager(expert_tokens, schedule=schedule)
 
-        tokens_recv = self.scheduler.ungroup_experts(schedule, expert_tokens)
+        # TODO fix
+        tokens_recv = self.scheduler.ungroup_experts(expert_tokens, tokens_recv)
 
         dist.all_to_all(tokens_send, tokens_recv)
 
-        hidden_states = self.scheduler.gather_tokens(schedule, tokens_send, hidden_states, router_mask)
+        # TODO fix
+        hidden_states = self.scheduler.gather_tokens(tokens_send, hidden_states, router_mask)
 
         self.end_event.record()
         self.end_event.synchronize()

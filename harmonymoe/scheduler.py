@@ -5,7 +5,7 @@ import random
 import torch.distributed as dist
 
 class Scheduler():
-    def __init__(self, scheduling_policy="deepspeed", num_experts=8, eq_tokens=150, num_gpus=None, d_model=768):
+    def __init__(self, scheduling_policy="deepspeed", num_experts=8, eq_tokens=150, num_gpus=None, d_model=768, max_num_toks_local=12000):
         if num_gpus is None:
             self.rank = dist.get_rank()
             self.num_gpus = dist.get_world_size()
@@ -15,6 +15,11 @@ class Scheduler():
         self.num_experts = num_experts
         self.eq_tokens = eq_tokens
         self.d_model = d_model
+        self.num_experts_per_gpu = self.num_experts // self.num_gpus
+        self.max_num_toks_local = max_num_toks_local
+        avg = self.max_num_toks_local // self.num_gpus 
+        self.max_tokens_send_single_gpu = avg + self.eq_tokens * self.num_gpus
+
 
         self.deepspeed_assign = self.generate_deepspeed_topo()
         self.demeter_offload_assign = self.generate_deepspeed_topo()
@@ -30,16 +35,16 @@ class Scheduler():
             case "adnexus":
                 self.scheduler = self.schedule_adnexus
                 self.reference_assign = self.deepspeed_assign
-            case "even_split":
-                self.scheduler = self.schedule_even_split
-            case "drop":
-                self.scheduler = self.schedule_drop
-                self.fixed_assign = self.deepspeed_assign
-            case "demeter":
-                self.scheduler = self.schedule_demeter
-                self.reference_assign = self.deepspeed_assign
-            case "adfabricus":
-                self.scheduler = self.schedule_adfabricus
+            # case "even_split":
+            #     self.scheduler = self.schedule_even_split
+            # case "drop":
+            #     self.scheduler = self.schedule_drop
+            #     self.fixed_assign = self.deepspeed_assign
+            # case "demeter":
+            #     self.scheduler = self.schedule_demeter
+            #     self.reference_assign = self.deepspeed_assign
+            # case "adfabricus":
+            #     self.scheduler = self.schedule_adfabricus
             case _:
                 print("SCHEDULING POLICY NOT IMPLEMENTED")
                 exit(1)
@@ -54,71 +59,159 @@ class Scheduler():
         return self.scheduler(meta, topo)
 
     def distribute_tokens(self, schedule: [[[int]]], hidden_states, router_mask):
-        distribution = [[] for _ in range(self.num_gpus)]
-
+        distribution = self.allocate_recv_tensors()
+        
+        gpu_start_idx = [1 for _ in range(self.num_gpus)]
         for j in range(self.num_experts):
+            # if self.rank == 0:
+            #     print(f"Expert {j} has: {hidden_states[router_mask[:,:,j]].shape} tokens")
+            expert_toks = hidden_states[router_mask[:,:,j]]
             start = 0
             for i in range(self.num_gpus):
-                if schedule[self.rank][j][i] != 0:
-                    size = schedule[self.rank][j][i]
-                    distribution[i].append(hidden_states[router_mask[:,:,j]][start:start+size,:])
-                    start += size
+                if schedule[i][j] != 0:
+                    size = schedule[i][j]
+                    end = start + size 
+                    end_gpu_idx = gpu_start_idx[i] + size
+                    # if self.rank == 0:
+                    #     print(f"Allocating to expert {j}: {end-start}")
+                    distribution[i][gpu_start_idx[i]:end_gpu_idx] = expert_toks[start:end]
+                    distribution[i][0][j] = size
+                    start = end
+                    gpu_start_idx[i] = end_gpu_idx
+        
+        #exit(0)
+        return distribution
 
-        return [torch.cat(tokens, dim=0) if len(tokens) != 0 else torch.empty((0, self.d_model), device="cuda") for tokens in distribution]
+        # distribution = [[] for _ in range(self.num_gpus)]
+
+        # for j in range(self.num_experts):
+        #     start = 0
+        #     for i in range(self.num_gpus):
+        #         if schedule[self.rank][j][i] != 0:
+        #             size = schedule[self.rank][j][i]
+        #             distribution[i].append(hidden_states[router_mask[:,:,j]][start:start+size,:])
+        #             start += size
+
+        # return [torch.cat(tokens, dim=0) if len(tokens) != 0 else torch.empty((0, self.d_model), device="cuda") for tokens in distribution]
     
     # Put appropriate updates into hidden_states
-    def gather_tokens(self, schedule: [[[int]]], gpu_tokens: [torch.Tensor], hidden_states, router_mask):
+    def gather_tokens(self, tokens: [torch.Tensor], hidden_states, router_mask):
         expert_start_idx = [0 for _ in range(self.num_experts)]
         for i in range(self.num_gpus):
             start = 0
             for j in range(self.num_experts):
-                if schedule[self.rank][j][i] != 0:
-                    size = schedule[self.rank][j][i]
-                    hidden_states[router_mask[:,:,j]][expert_start_idx[j]:expert_start_idx[j]+size,:] = gpu_tokens[i][start:start+size,:]
-                    start += size
-
-        return hidden_states
-
-    def allocate_recv_tensors(self, schedule: [[[int]]]):
-        recv = []
-
-        for i in range(self.num_gpus):
-            num_tokens = 0
-            for j in range(self.num_experts):
-                num_tokens += schedule[i][j][self.rank]
-            recv.append(torch.empty((num_tokens, self.d_model), device="cuda"))
+                size = int(tokens[i][0][j].item())
+                if size != 0:
+                    end = start + size
+                    expert_end_idx = expert_start_idx[j] + size 
+                    hidden_states[router_mask[:,:,j]][expert_start_idx[j]:expert_end_idx] = tokens[i][start:end]
+                    start = end
+                    expert_start_idx[j] = expert_end_idx
         
-        return recv
+        return hidden_states
+        
+        
+        # expert_start_idx = [1 for _ in range(self.num_experts)]
+        # for i in range(self.num_gpus):
+        #     start = 0
+        #     for j in range(self.num_experts):
+        #         if schedule[self.rank][j][i] != 0:
+        #             size = schedule[self.rank][j][i]
+        #             hidden_states[router_mask[:,:,j]][expert_start_idx[j]:expert_start_idx[j]+size,:] = gpu_tokens[i][start:start+size,:]
+        #             start += size
+
+        # return hidden_states
+
+    def allocate_recv_tensors(self):
+        return [
+            torch.cat(
+                [
+                    torch.zeros((1, self.d_model), device="cuda"),
+                    torch.empty((self.max_tokens_send_single_gpu, self.d_model), device="cuda")
+                ],
+                dim=0,
+            )
+            for _ in range(self.num_gpus)
+        ]
+
+
+        #return [torch.empty((1+self.max_tokens_send_single_gpu, self.d_model), device="cuda") for _ in range(self.num_gpus)]
+        # recv = []
+
+        # for i in range(self.num_gpus):
+        #     num_tokens = 0
+        #     for j in range(self.num_experts):
+        #         num_tokens += schedule[i][j][self.rank]
+        #     recv.append(torch.empty((num_tokens, self.d_model), device="cuda"))
+        
+        # return recv
     
     # A transformation to go from tokens index by GPU to expert 
-    def group_experts(self, schedule: [[[int]]], gpu_tokens: [torch.Tensor]):
+    def group_experts(self, tokens: [torch.Tensor]):
         expert_tokens = [[] for _ in range(self.num_experts)]
 
         for i in range(self.num_gpus):
-            start = 0
-            end = 0
+            start = 1
             for j in range(self.num_experts):
-                if schedule[i][j][self.rank] != 0:
-                    end += schedule[i][j][self.rank]
-                    expert_tokens[j].append(gpu_tokens[i][start:end])
+                size = int(tokens[i][0][j].item())
+                if size != 0:
+                    end = start + size
+                    expert_tokens[j].append(tokens[i][start:end])
                     start = end
+        
+        return [torch.cat(toks, dim=0) if len(toks) != 0 else torch.empty((0, self.d_model), device="cuda") for toks in expert_tokens]
 
-        return [torch.cat(tokens, dim=0) if len(tokens) != 0 else torch.empty((0, self.d_model), device="cuda") for tokens in expert_tokens]
+
+        # expert_tokens = [[] for _ in range(self.num_experts)]
+
+        # for i in range(self.num_gpus):
+        #     start = 0
+        #     end = 0
+        #     for j in range(self.num_experts):
+        #         if schedule[i][j][self.rank] != 0:
+        #             end += schedule[i][j][self.rank]
+        #             expert_tokens[j].append(gpu_tokens[i][start:end])
+        #             start = end
+
+        # return [torch.cat(tokens, dim=0) if len(tokens) != 0 else torch.empty((0, self.d_model), device="cuda") for tokens in expert_tokens]
 
     # A transformation to go from tokens index by expert to GPU
-    def ungroup_experts(self, schedule: [[[int]]], expert_tokens: [torch.Tensor]):
-        gpu_tokens = [[] for _ in range(self.num_gpus)]
+    def ungroup_experts(self, expert_tokens: [torch.Tensor], tokens: [torch.Tensor]):
+        gpu_tokens = self.allocate_recv_tensors()
 
+        gpu_start_idx = [1 for _ in range(self.num_experts)]
         for j in range(self.num_experts):
             start = 0
-            end = 0
             for i in range(self.num_gpus):
-                if schedule[i][j][self.rank] != 0:
-                    end += schedule[i][j][self.rank]
-                    gpu_tokens[i].append(expert_tokens[j][start:end])
+                size = int(tokens[i][0][j].item())
+                if size != 0: 
+                    #print(size)
+                    end = start + size
+                    gpu_end_idx = gpu_start_idx[i] + size
+                    tokens[i][gpu_start_idx[i]:gpu_end_idx] = expert_tokens[j][start:end]
                     start = end
+                    gpu_start_idx[i] = gpu_end_idx
 
-        return [torch.cat(tokens, dim=0) if len(tokens) != 0 else torch.empty((0, self.d_model), device="cuda") for tokens in gpu_tokens]
+                    # end_expert_idx = start_expert_idx[j] + size
+                    # tokens[i][start:end] = expert_tokens[j][start_expert_idx[j]:end_expert_idx]
+                    # start = end
+                    # start_expert_idx[j] = end_expert_idx
+        
+        return tokens
+
+
+        # gpu_tokens = [[] for _ in range(self.num_gpus)]
+
+        # for j in range(self.num_experts):
+        #     start = 0
+        #     end = 0
+        #     for i in range(self.num_gpus):
+        #         if schedule[i][j][self.rank] != 0:
+        #             end += schedule[i][j][self.rank]
+        #             gpu_tokens[i].append(expert_tokens[j][start:end])
+        #             start = end
+
+        # return [torch.cat(tokens, dim=0) if len(tokens) != 0 else torch.empty((0, self.d_model), device="cuda") for tokens in gpu_tokens]
     
     def generate_deepspeed_topo(self):
         topology = [[] for _ in range(self.num_gpus)]
@@ -138,110 +231,171 @@ class Scheduler():
             start = end
         return topology
     
-    def schedule_deepspeed(self, meta, _):
-        schedule = [[[0 for _ in range(self.num_gpus)] for _ in range(self.num_experts)] for _ in range(self.num_gpus)]
+    def schedule_deepspeed(self, expert_freq, _):
+        schedule = [[0 for _ in range(self.num_experts)] for _ in range(self.num_gpus)]
+        gpu_tok_amt = [0 for _ in range(self.num_gpus)]
 
-        for i in range(self.num_gpus): # source
-            for j in range(self.num_experts): # expert
-                target = -1
-                for k in range(self.num_gpus):
-                    if j in self.deepspeed_assign[k]:
-                        target = k 
-                        break
-                if target == -1:
-                    raise Exception("Failure on the deck: there is an expert overboard")
-                schedule[i][j][target] = meta[i][j].item()
+        # Start with the basic append across 
+        for expert_idx in range(self.num_experts):
+            for gpu_idx in range(self.num_gpus):
+                if expert_idx in self.deepspeed_assign[gpu_idx]:
+                    if expert_freq[expert_idx] != 0:
+                        schedule[gpu_idx][expert_idx] = expert_freq[expert_idx]
+                        gpu_tok_amt[gpu_idx] += expert_freq[expert_idx]
         
-        return schedule
+        return schedule 
 
 
-    def schedule_drop(self, meta, _):
-        schedule = [[[0 for _ in range(self.num_gpus)] for _ in range(self.num_experts)] for _ in range(self.num_gpus)]
+    # def schedule_drop(self, meta, _):
+    #     schedule = [[[0 for _ in range(self.num_gpus)] for _ in range(self.num_experts)] for _ in range(self.num_gpus)]
 
-        avg = int(sum(map(lambda t: sum(t).item(), meta)) / self.num_gpus) 
-        gpu_amt = [0 for _ in range(self.num_gpus)]
-        for i in range(self.num_gpus): # source
-            for j in range(self.num_experts): # expert
-                num_tokens = meta[i][j].item()
-                if num_tokens == 0:
-                    continue # We do not have work for this one
-                start_idx = 0
-                for k in range(self.num_gpus): # dest
-                    if j in self.deepspeed_assign[k]:
-                        if gpu_amt[k] < avg:
-                            num_tokens_send = min(num_tokens, avg - gpu_amt[k])
-                            schedule[i][j][k] = num_tokens_send
-                            gpu_amt[k] += num_tokens_send
+    #     avg = int(sum(map(lambda t: sum(t).item(), meta)) / self.num_gpus) 
+    #     gpu_amt = [0 for _ in range(self.num_gpus)]
+    #     for i in range(self.num_gpus): # source
+    #         for j in range(self.num_experts): # expert
+    #             num_tokens = meta[i][j].item()
+    #             if num_tokens == 0:
+    #                 continue # We do not have work for this one
+    #             start_idx = 0
+    #             for k in range(self.num_gpus): # dest
+    #                 if j in self.deepspeed_assign[k]:
+    #                     if gpu_amt[k] < avg:
+    #                         num_tokens_send = min(num_tokens, avg - gpu_amt[k])
+    #                         schedule[i][j][k] = num_tokens_send
+    #                         gpu_amt[k] += num_tokens_send
 
-        return schedule
+    #     return schedule
 
-    def schedule_adnexus(self, meta, topology):
-        schedule = self.schedule_deepspeed(meta, topology)
-        avg = int(sum(map(lambda t: sum(t).item(), meta)) / self.num_gpus) 
+    def schedule_adnexus(self, expert_freq, topology):
+        schedule = [[0 for _ in range(self.num_experts)] for _ in range(self.num_gpus)]
+        gpu_tok_amt = [0 for _ in range(self.num_gpus)]
 
-        # Now we should rebalance it
-        gpu_amt = [0 for _ in range(self.num_gpus)]
+        # Start with the basic append across 
+        for expert_idx in range(self.num_experts):
+            for gpu_idx in range(self.num_gpus):
+                if expert_idx in self.deepspeed_assign[gpu_idx]:
+                    if expert_freq[expert_idx] != 0:
+                        schedule[gpu_idx][expert_idx] = expert_freq[expert_idx]
+                        gpu_tok_amt[gpu_idx] += expert_freq[expert_idx]
 
-        # Let us first get all the amounts on each gpu 
+        avg = sum(gpu_tok_amt) // self.num_gpus
+
         for i in range(self.num_gpus):
-            for j in range(self.num_experts):
-                for k in range(self.num_gpus):
-                    gpu_amt[i] += schedule[k][j][i]
+            while gpu_tok_amt[i] > avg:
+                # Find the expert getting the most tokens
+                expert_idx_most = 0
+                expert_amt = schedule[i][0]
+                for j in range(1, self.num_experts):
+                    if schedule[i][j] > expert_amt:
+                        expert_amt = schedule[i][j]
+                        expert_idx_most = j
 
-        for i in range(self.num_gpus):
-            while gpu_amt[i] > avg: # GPU i is received too many tokens
-                # Find gpu sending me the most tokens
-                most_tokens = 0
-                sender_idx = -1
-                for k in range(self.num_gpus):
-                    tot = 0
-                    for j in range(self.num_experts):
-                        tot += schedule[k][j][i]
-                    if tot > most_tokens:
-                        most_tokens = tot
-                        sender_idx = k
-                
-                if most_tokens == 0:
-                    break # No one is sending tokens... just in case
-                
-                # Next find the expert sending the most from sender_idx
-                most_tokens = 0
-                expert_idx = -1
-                for j in range(self.num_experts):
-                    if schedule[sender_idx][j][i] > most_tokens:
-                        most_tokens = schedule[sender_idx][j][i]
-                        expert_idx = j
-                
-                if most_tokens == 0:
-                    break # This should not happen as the previous check passed
-                
-                if most_tokens < self.eq_tokens:
-                    break # Cannot do move, not enough tokens
+                # Find the GPU receiving the least
+                gpu_idx_least = 0
+                gpu_amt = gpu_tok_amt[0]
+                for k in range(1, self.num_gpus):
+                    if gpu_tok_amt[k] < gpu_amt:
+                        gpu_amt = gpu_tok_amt[k]
+                        gpu_idx_least = k
 
-                # Find GPU with least tokens
-                least = gpu_amt[0]
-                least_idx = 0
-                for k in range(self.num_gpus):
-                    if gpu_amt[k] < least:
-                        least = gpu_amt[k]
-                        least_idx = k
-                
-                if least == i:
-                    break # Don't offload to yourself
-                
-                # Check if least has enough room
-                if least + self.eq_tokens > avg:
+                # If itself then break
+                if gpu_idx_least == i:
                     break
+
+                # If least does not have atleast eq_tokens room
+                if gpu_amt + self.eq_tokens > avg:
+                    break
+
+                # Try to move as many tokens
+                num_toks_move = min(
+                    avg - gpu_amt, # How much room is left without going over
+                    expert_amt # Maximum number of tokens this expert can share
+                )
+
+                # If less than eq_tokens then break 
+                if num_toks_move < self.eq_tokens:
+                    break
+
+                # Update 
+                schedule[i][expert_idx_most] -= num_toks_move
+                schedule[gpu_idx_least][expert_idx_most] += num_toks_move 
+
+                gpu_tok_amt[i] -= num_toks_move
+                gpu_tok_amt[gpu_idx_least] += num_toks_move
+
+        
+        # print(list(map(lambda arr: sum(arr), schedule)))
+        # print(f"Max sent to a single GPU: {self.max_tokens_send_single_gpu}")
+        # exit(0)
+        return schedule 
+
+    # def schedule_adnexus(self, meta, topology):
+    #     schedule = self.schedule_deepspeed(meta, topology)
+    #     avg = int(sum(map(lambda t: sum(t).item(), meta)) / self.num_gpus) 
+
+    #     # Now we should rebalance it
+    #     gpu_amt = [0 for _ in range(self.num_gpus)]
+
+    #     # Let us first get all the amounts on each gpu 
+    #     for i in range(self.num_gpus):
+    #         for j in range(self.num_experts):
+    #             for k in range(self.num_gpus):
+    #                 gpu_amt[i] += schedule[k][j][i]
+
+    #     for i in range(self.num_gpus):
+    #         while gpu_amt[i] > avg: # GPU i is received too many tokens
+    #             # Find gpu sending me the most tokens
+    #             most_tokens = 0
+    #             sender_idx = -1
+    #             for k in range(self.num_gpus):
+    #                 tot = 0
+    #                 for j in range(self.num_experts):
+    #                     tot += schedule[k][j][i]
+    #                 if tot > most_tokens:
+    #                     most_tokens = tot
+    #                     sender_idx = k
+                
+    #             if most_tokens == 0:
+    #                 break # No one is sending tokens... just in case
+                
+    #             # Next find the expert sending the most from sender_idx
+    #             most_tokens = 0
+    #             expert_idx = -1
+    #             for j in range(self.num_experts):
+    #                 if schedule[sender_idx][j][i] > most_tokens:
+    #                     most_tokens = schedule[sender_idx][j][i]
+    #                     expert_idx = j
+                
+    #             if most_tokens == 0:
+    #                 break # This should not happen as the previous check passed
+                
+    #             if most_tokens < self.eq_tokens:
+    #                 break # Cannot do move, not enough tokens
+
+    #             # Find GPU with least tokens
+    #             least = gpu_amt[0]
+    #             least_idx = 0
+    #             for k in range(self.num_gpus):
+    #                 if gpu_amt[k] < least:
+    #                     least = gpu_amt[k]
+    #                     least_idx = k
+                
+    #             if least == i:
+    #                 break # Don't offload to yourself
+                
+    #             # Check if least has enough room
+    #             if least + self.eq_tokens > avg:
+    #                 break
                 
 
-                # Next we do the move now
-                tokens_send = min(most_tokens, avg - least)
-                schedule[sender_idx][expert_idx][i] -= tokens_send
-                gpu_amt[i] -= tokens_send
-                schedule[sender_idx][expert_idx][least_idx] += tokens_send
-                gpu_amt[least_idx] += tokens_send
+    #             # Next we do the move now
+    #             tokens_send = min(most_tokens, avg - least)
+    #             schedule[sender_idx][expert_idx][i] -= tokens_send
+    #             gpu_amt[i] -= tokens_send
+    #             schedule[sender_idx][expert_idx][least_idx] += tokens_send
+    #             gpu_amt[least_idx] += tokens_send
         
-        return schedule
+    #     return schedule
 
     
     def schedule_demeter(self, meta, topology):
@@ -320,7 +474,7 @@ class Scheduler():
                 gpu_amt[offload_gpu_idx] += num_tokens
             #print(f"Done: {i}")
         
-        print(schedule)
+        #print(schedule)
         return schedule
 
     def schedule_even_split(self, meta, _):

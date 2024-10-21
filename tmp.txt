@@ -1,0 +1,1 @@
+python3 start.py -ni 20 -bs 1000 -w 8 -d wikitext -m google/switch-base-64 -s adnexus -ec 8
