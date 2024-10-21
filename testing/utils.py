@@ -3,7 +3,6 @@ import torch.nn as nn
 import torch.distributed as dist
 
 from transformers.activations import ACT2FN
-#from fastmoe.fmoe.transformer import FMoETransformerMLP
 from fmoe.layers import FMoE
 
 
@@ -62,14 +61,6 @@ def _replace_fmoe_layer(model, target, layer_idx, router_name, experts_name, dec
                 world_size = dist.get_world_size()
                 num_experts_per_worker = num_experts // world_size
 
-                # new_moe_layer = FMoE(
-                #     num_expert=num_experts_per_worker,
-                #     d_model=config.d_model,
-                #     world_size=world_size,
-                #     top_k=1,
-                #     expert=lambda _: SwitchTransformersDenseActDense(config),
-                # )
-
                 new_moe_layer = FMoETransformerMLP(
                     num_expert=num_experts_per_worker,
                     d_model=config.d_model,
@@ -77,9 +68,6 @@ def _replace_fmoe_layer(model, target, layer_idx, router_name, experts_name, dec
                     world_size=world_size,
                     expert=lambda _: SwitchTransformersDenseActDense(config),
                 )
-
-                # print(new_moe_layer)
-                # exit(0)
 
                 # Move the weights over
                 with torch.no_grad():
@@ -93,8 +81,6 @@ def _replace_fmoe_layer(model, target, layer_idx, router_name, experts_name, dec
                     for i in range(start_idx, end_idx):
                         new_moe_layer.experts[i-start_idx].wi.weight.copy_(experts[i].wi.weight)
                         new_moe_layer.experts[i-start_idx].wo.weight.copy_(experts[i].wo.weight)
-                        # new_moe_layer.experts[i-start_idx].htoh4.weight.copy_(experts[i].wi.weight)
-                        # new_moe_layer.experts[i-start_idx].h4toh.weight.copy_(experts[i].wo.weight)
 
                 layer_idx[0] += 1
 
@@ -112,7 +98,6 @@ def _replace_fmoe_layer(model, target, layer_idx, router_name, experts_name, dec
 
 def get_fmoe_layers(acc, model, target):
     for module in model.children():
-        #if isinstance(module, FMoE):
         if isinstance(module, FMoETransformerMLP):
             acc.append(module)
         else:

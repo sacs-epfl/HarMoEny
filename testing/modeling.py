@@ -42,20 +42,7 @@ class Modeling:
             raise Exception("This sytem is not implemented")
     
     def __call__(self, batch):
-      #  if self.system_name == "fastme"
-
         if "switch" in self.model_name:
-            # if self.system_name == "fastmoe":
-            #     print(list(map(lambda d: f"{d[0]}: {d[1].shape}", batch.items())))
-            #     batch["input_ids"] = batch["input_ids"].reshape(-1)
-            #     batch["attention_mask"] = batch["attention_mask"].reshape(-1)
-            #     batch["decoder_input_ids"] = batch["decoder_input_ids"].reshape(-1)
-            #     print(list(map(lambda d: f"{d[0]}: {d[1].shape}", batch.items())))
-            #     exit(0)
-            #     # FastMoE expects the second dimension to be d_model
-            #     inp = inp.reshape(-1, self.d_model)
-            # print(list(map(lambda d: f"{d[0]}: {d[1].shape}", batch.items())))
-            # exit(0)
             return self.model(**batch)
         else:
             raise Exception("This model has not been implemented")
