@@ -1,1 +1,0 @@
-export PYTHONPATH="/workspace/fastmoe/built:$PYTHONPATH"
