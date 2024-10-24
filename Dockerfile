@@ -6,11 +6,31 @@ ARG GROUP_ID
 ARG USER_NAME=userapp
 
 # Install system-wide packages
-RUN pip install huggingface_hub plotly datasets nvidia-ml-py3 transformers
-RUN pip install -U kaleido
+RUN pip install \
+    huggingface_hub==0.26.1 \
+    datasets==3.0.2 \
+    nvidia-ml-py3==7.352.0  \
+    transformers==4.46.0  \
+    deepspeed==0.15.3
+
+RUN pip install -U kaleido==0.2.1
+
+
+# Install system dependencies for FastMoE
+RUN apt-get update && apt-get install -y \
+    git \
+    cmake \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Clone and install FastMoE
+RUN git clone https://github.com/laekov/fastmoe.git /workspace/fastmoe && \
+    cd /workspace/fastmoe && \
+    git submodule update --init --recursive && \
+    pip install .
 
 # Create Triton directory
-RUN mkdir -p /root/.triton/autotune
+RUN mkdir -p /.triton/autotune
 
 RUN groupadd -f -g ${GROUP_ID} ${USER_NAME} || true && \
     id -u ${USER_NAME} >/dev/null 2>&1 || useradd -l -u ${USER_ID} -g ${GROUP_ID} ${USER_NAME} && \
@@ -28,3 +48,6 @@ USER ${USER_NAME}
 
 # Set the working directory
 WORKDIR /workspace
+
+# Set the PYTHONPATH environment variable for FastMoE
+#ENV PYTHONPATH="/workspace/fastmoe:${PYTHONPATH}"

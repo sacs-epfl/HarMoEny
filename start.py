@@ -66,7 +66,8 @@ if args.num_iters == 0 and args.num_samples == 0:
 def setup(rank):
     os.environ["HF_HOME"] = "/cache"
     os.environ["HF_DATASETS_CACHE"] = "/cache"
-            
+    os.environ["TRITON_HOME"] = "/.triton"
+
     if args.system_name == "deepspeed":
         deepspeed.init_distributed()
     else:
