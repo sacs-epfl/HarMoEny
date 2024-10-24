@@ -16,6 +16,7 @@ import argparse
 import math
 import random
 from tqdm import tqdm
+import deepspeed
 
 from torch.utils.data import DataLoader, DistributedSampler
 from transformers import AutoTokenizer
@@ -52,6 +53,8 @@ parser.add_argument("-ne", "--name_experts", default="experts", type=str, help="
 parser.add_argument("-nd", "--name_decoder", default="decoder", type=str, help="module name of model decoder")
 parser.add_argument("-dc", "--dynamic_components", default=["wi", "wo"], type=list, help="parameter names of expert changing weights")
 parser.add_argument("-sys", "--system_name", default="harmony", type=str)
+# For DeepSpeed
+parser.add_argument("--local_rank", default=0, type=int) 
 
 args = parser.parse_args()
 
@@ -61,11 +64,16 @@ if args.num_iters == 0 and args.num_samples == 0:
     exit(1)
 
 def setup(rank):
-    os.environ["MASTER_ADDR"] = "localhost"
-    os.environ["MASTER_PORT"] = args.port
     os.environ["HF_HOME"] = "/cache"
     os.environ["HF_DATASETS_CACHE"] = "/cache"
-    dist.init_process_group("nccl", rank=rank, world_size=args.world)
+            
+    if args.system_name == "deepspeed":
+        deepspeed.init_distributed()
+    else:
+        os.environ["MASTER_ADDR"] = "localhost"
+        os.environ["MASTER_PORT"] = args.port
+        dist.init_process_group("nccl", rank=rank, world_size=args.world)
+
     torch.cuda.set_device(rank)
 
 def cleanup():
@@ -80,9 +88,6 @@ def run_inference_workload(rank):
         tokenizer = AutoTokenizer.from_pretrained(args.model_name, cache_dir="/cache")
         
         model = Modeling(**vars(args))
-        model.eval()
-        model.cuda()
-        
 
         flexible_dataset = FlexibleDataset(
             args.dataset, 
@@ -119,14 +124,46 @@ def run_inference_workload(rank):
 
 def run_standard_experiment(model, tokenizer, loader, path):
     latencies = []
-    
-    with torch.no_grad():
-        for batch in tqdm(loader):
-            start = time.time()
-            batch = {k: v.cuda() for k, v in batch.items()}
-            model(batch)
-            end = time.time()
-            latencies.append(end-start)
+
+    if args.system_name == "deepspeed":
+        ds_engine = deepspeed.init_inference(
+            model.model,
+            dtype=torch.float,
+            replace_with_kernel_inject=False,
+            moe={
+                "enabled": True,
+                "ep_size": args.world, 
+                "moe_experts": [model.num_experts],
+            }
+        )
+        # model.model = ds_engine.module
+
+        # for req in tqdm():
+        #     start = time.time()
+        #     model(req)
+        #     end = time.time()
+        #     latencies.append(end-start)
+        with torch.no_grad():
+            for batch in tqdm(loader):
+                start = time.time()
+                batch = {k: v.cuda() for k, v in batch.items()}
+                ds_engine(
+                    input_ids=batch["input_ids"], 
+                    attention_mask=batch["attention_mask"],
+                    decoder_input_ids=batch["decoder_input_ids"],
+                )
+                end = time.time()
+                latencies.append(end-start)
+    else:
+        model.eval()
+        model.cuda()
+        with torch.no_grad():
+            for batch in tqdm(loader):
+                start = time.time()
+                batch = {k: v.cuda() for k, v in batch.items()}
+                model(batch)
+                end = time.time()
+                latencies.append(end-start)
     
 
     create_save_dir_if_not_exist(path)
@@ -184,5 +221,10 @@ def signal_handler(sig, frame):
 
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, signal_handler)
-    mp.spawn(run_inference_workload, nprocs=args.world, join=True)
+
+    if args.system_name == "deepspeed":
+        # Assumes you execute with deepspeed command
+        run_inference_workload(args.local_rank) 
+    else:
+        mp.spawn(run_inference_workload, nprocs=args.world, join=True)
     

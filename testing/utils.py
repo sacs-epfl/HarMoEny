@@ -3,8 +3,10 @@ import torch.nn as nn
 import torch.distributed as dist
 
 from transformers.activations import ACT2FN
-from fmoe.layers import FMoE
+from transformers.models.switch_transformers.modeling_switch_transformers import SwitchTransformersDenseActDense
 
+############## FastMoE ########################
+from fmoe.layers import FMoE
 
 class FMoETransformerMLP(FMoE):
     def __init__(self, **kwargs):
@@ -19,7 +21,7 @@ class FMoETransformerMLP(FMoE):
 
 # Need to modify the forward of the Switch class 
 # since FastMoE decides to give an extra value to forward
-class SwitchTransformersDenseActDense(nn.Module):
+class FMoESwitchTransformersDenseActDense(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.wi = nn.Linear(config.d_model, config.d_ff, bias=False)
@@ -66,7 +68,7 @@ def _replace_fmoe_layer(model, target, layer_idx, router_name, experts_name, dec
                     d_model=config.d_model,
                     top_k=1,
                     world_size=world_size,
-                    expert=lambda _: SwitchTransformersDenseActDense(config),
+                    expert=lambda _: FMoESwitchTransformersDenseActDense(config),
                 )
 
                 # Move the weights over
@@ -102,4 +104,95 @@ def get_fmoe_layers(acc, model, target):
             acc.append(module)
         else:
             acc = get_fmoe_layers(acc, module, target)
+    return acc
+
+
+################ DEEPSPEED #######################
+
+import deepspeed
+
+class DeepspeedMoE(deepspeed.moe.layer.MoE):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+    
+    def forward(self, hidden_states):
+        output = super().forward(hidden_states)
+        return output[0], (output[1], output[2])
+
+
+def replace_deepspeed_layer(model, target, router_name, experts_name, decoder_name, config):
+    _replace_deepspeed_layer(model, target, [0], router_name, experts_name, decoder_name, config)
+
+    return get_deepspeed_layers([], model, target)
+
+def _replace_deepspeed_layer(model, target, layer_idx, router_name, experts_name, decoder_name, config):
+    for name, module in model.named_children():
+        for child_name, child in module.named_children():
+           # print(type(child).__name__)
+            if type(child).__name__ == target:
+                router = getattr(child, router_name)
+                experts = getattr(child, experts_name)
+                if isinstance(experts, nn.ModuleDict):
+                    experts = nn.ModuleList(experts.values())
+
+
+                num_experts = len(experts)
+                world_size = dist.get_world_size()
+                num_experts_per_worker = num_experts // world_size
+
+                new_moe_layer = DeepspeedMoE(
+                    hidden_size=config.d_model,
+                    expert=SwitchTransformersDenseActDense(config),
+                    num_experts=num_experts,
+                    ep_size=world_size,
+                    k=1,
+                )
+
+                # new_moe_layer = FMoETransformerMLP(
+                #     num_expert=num_experts_per_worker,
+                #     d_model=config.d_model,
+                #     top_k=1,
+                #     world_size=world_size,
+                #     expert=lambda _: FMoESwitchTransformersDenseActDense(config),
+                # )
+
+                # Move the weights over
+                with torch.no_grad():
+                    # Router
+                    new_moe_layer.deepspeed_moe.gate.wg.weight.copy_(router.classifier.weight)
+
+                    # Experts
+                    rank = dist.get_rank()
+                    start_idx = rank * num_experts_per_worker
+                    for i in range(num_experts_per_worker):
+                        new_moe_layer.deepspeed_moe.experts.deepspeed_experts[i].wi.weight.copy_(experts[start_idx+i].wi.weight)
+                        new_moe_layer.deepspeed_moe.experts.deepspeed_experts[i].wo.weight.copy_(experts[start_idx+i].wo.weight)
+
+                    # rank = dist.get_rank()
+                    # start_idx = rank * num_experts_per_worker
+                    # end_idx = start_idx + num_experts_per_worker
+                    # for i in range(start_idx, end_idx):
+                    #     new_moe_layer.experts[i-start_idx].wi.weight.copy_(experts[i].wi.weight)
+                    #     new_moe_layer.experts[i-start_idx].wo.weight.copy_(experts[i].wo.weight)
+
+                layer_idx[0] += 1
+
+                setattr(module, child_name, new_moe_layer)
+            else:
+                _replace_deepspeed_layer(
+                    child, 
+                    target, 
+                    layer_idx,
+                    router_name, 
+                    experts_name,
+                    decoder_name,
+                    config,
+                )  
+
+def get_deepspeed_layers(acc, model, target):
+    for module in model.children():
+        if isinstance(module, deepspeed.moe.layer.MoE):
+            acc.append(module)
+        else:
+            acc = get_deepspeed_layers(acc, module, target)
     return acc
