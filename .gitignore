@@ -2,3 +2,4 @@ data
 outputs
 plots
 *.pth
+*__pycache__

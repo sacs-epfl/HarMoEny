@@ -64,12 +64,13 @@ class MoELayer(nn.Module):
         return self
 
     def save_statistics(self, DIR=""):
-        path = f"{DIR}/moe_l{self.layer_idx}"
+        path = f"{DIR}/moe"
         if self.is_decoder:
-            path += "_decode"
+            path += "_decoder"
+        path += f"_layer-{self.layer_idx}"
 
         with open(f"{path}.csv", "w") as f:
-            fieldnames = ["iteration", "total number of tokens sent", "total number of tokens recv", "latency"]
+            fieldnames = ["iteration", "total number of tokens sent", "total number of tokens recv", "latency (ms)"]
 
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
@@ -79,7 +80,7 @@ class MoELayer(nn.Module):
                     "iteration": i,
                     "total number of tokens sent": self.tot_num_toks_send[i],
                     "total number of tokens recv": self.tot_num_toks_recv[i],
-                    "latency": self.latencies[i],
+                    "latency (ms)": self.latencies[i],
                 }
              
                 writer.writerow(dic)

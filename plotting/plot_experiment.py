@@ -34,10 +34,10 @@ def plot_e2e(variable: str, dirs: [str]):
         frames.append(df)
 
     df = pd.concat(frames)
-    df = df.sort_values([variable, "Iteration Number"])
-    df = df[df["Iteration Number"] > 3]
+    df = df.sort_values([variable, "iteration"])
+    df = df[df["iteration"] > 3]
 
-    fig = px.line(df, x="Iteration Number", y="Latency (s)", color=variable)
+    fig = px.line(df, x="iteration", y="latency (s)", color=variable)
     fig.update_yaxes(rangemode="tozero")
     update_fig_to_theme(fig)
 
@@ -87,7 +87,7 @@ def plot_imbalance_and_oversubscription(variable: str, dirs: [str]):
     df = df.sort_values([variable, "iteration"])
     df = df[df["iteration"] > 3]
 
-    fig = px.line(df, x="iteration", y="imbalance", color=variable, labels={"iteration": "Iteration Number", "imbalance": "Imbalance (relative %)"})
+    fig = px.line(df, x="iteration", y="imbalance", color=variable, labels={"iteration": "iteration", "imbalance": "Imbalance (relative %)"})
     fig.update_yaxes(rangemode="tozero")
     update_fig_to_theme(fig)
 
@@ -95,7 +95,7 @@ def plot_imbalance_and_oversubscription(variable: str, dirs: [str]):
     fig.write_image(f"{OUTPUT_DIR}/imbalance.png")
 
 
-    fig = px.line(df, x="iteration", y="oversubscription", color=variable, labels={"iteration": "Iteration Number", "oversubscription": "Oversubscription (relative %)"})
+    fig = px.line(df, x="iteration", y="oversubscription", color=variable, labels={"iteration": "iteration", "oversubscription": "Oversubscription (relative %)"})
     fig.update_yaxes(rangemode="tozero")
     update_fig_to_theme(fig)
 
@@ -106,16 +106,16 @@ def plot_average_speedup(comparison: str, dirs: [str]):
     for _dir in dirs:
         df = pd.read_csv(f"{_dir}/0/e2e.csv")
         data = read_data(_dir)
-        df = df.rename(columns={"Latency (s)": data["scheduling_policy"]})
+        df = df.rename(columns={"latency (s)": data["scheduling_policy"]})
         frames.append(df)
     if len(frames) < 1:
         print("No data to work on, finishing plot_average_speedup")
         return
     comb_df = frames[0]
     for df in frames[1:]:
-        comb_df = comb_df.merge(df, on="Iteration Number", how="outer")
+        comb_df = comb_df.merge(df, on="iteration", how="outer")
 
-    comb_df = comb_df[comb_df["Iteration Number"] > 3]
+    comb_df = comb_df[comb_df["iteration"] > 3]
 
     columns = comb_df.columns.values[1:]
     if comparison not in columns:
@@ -150,23 +150,24 @@ def plot_overall_e2e(variable: str, comparison: str, dirs: [str]):
     for _dir in dirs:
         df = pd.read_csv(f"{_dir}/0/e2e.csv")
         data = read_data(_dir)
-        df = df.rename(columns={"Latency (s)": data[variable]})
+        df = df.rename(columns={"latency (s)": data[variable]})
         frames.append(df)
     if len(frames) < 1:
         print("No data to work on, finishing plot_overall_e2e")
         return
     comb_df = frames[0]
     for df in frames[1:]:
-        comb_df = comb_df.merge(df, on="Iteration Number", how="outer")
-    comb_df = comb_df[comb_df["Iteration Number"] > 3]
+        comb_df = comb_df.merge(df, on="iteration", how="outer")
+    comb_df = comb_df[comb_df["iteration"] > 3]
+    print(comb_df)
 
     columns = comb_df.columns.values[1:]
     if comparison not in columns:
         print("To obtain speedups you need designate a comparitor")
         return
     
-    df = comb_df.sum(axis=0)
-    df = df.drop(index="Iteration Number")
+    df = comb_df.mean(axis=0) * (comb_df.count(axis=0)+3)
+    df = df.drop(index="iteration")
 
     df = df.sort_index()
 
@@ -199,14 +200,14 @@ def plot_throughput(comparison: str, dirs: [str]):
     throughput = {"policy": [], "throughput": []}
     for _dir in dirs:
         df = pd.read_csv(f"{_dir}/0/e2e.csv")
-        df = df[df["Iteration Number"] > 3]
+        df = df[df["iteration"] > 3]
         num_iters = len(df)
         df = df.sum(axis=0)
         data = read_data(_dir)
         num_samples = int(data["world_size"]) * int(data["batch_size"]) * num_iters
 
         throughput["policy"].append(data["scheduling_policy"])
-        throughput["throughput"].append(num_samples / df["Latency (s)"])
+        throughput["throughput"].append(num_samples / df["latency (s)"])
     
     df = pd.DataFrame(throughput)
 
@@ -256,13 +257,13 @@ def plot_speedup_across_metric(metric: str, dirs: [str]):
 
     for _dir in dirs:
         df = pd.read_csv(f"{_dir}/0/e2e.csv")
-        df = df[df["Iteration Number"] > 3]
+        df = df[df["iteration"] > 3]
         df = df.sum(axis=0)
         data = read_data(_dir)
         values.append({
             "metric": data[metric],
             "policy": data["scheduling_policy"],
-            "time": df["Latency (s)"]
+            "time": df["latency (s)"]
         })
 
     df = pd.DataFrame(values)
@@ -365,7 +366,7 @@ else:
         variable = sys.argv[2]
         baseline = sys.argv[3]
         plot_e2e(variable, sys.argv[4:])
-        plot_imbalance_and_oversubscription(variable, sys.argv[4:])
+        #plot_imbalance_and_oversubscription(variable, sys.argv[4:])
         plot_overall_e2e(variable, baseline, sys.argv[4:])
         # Throughput a pretty irrelevant metric given e2e
         #plot_throughput(baseline, sys.argv[3:])

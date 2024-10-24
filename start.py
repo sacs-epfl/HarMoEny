@@ -33,47 +33,47 @@ parser = argparse.ArgumentParser(
     description="Spawns MoE model across GPUs and e2e iteration times",
 )
 
-parser.add_argument("-sl", "--seq_len", default=120, type=int)
-parser.add_argument("-ni", "--num_iters", default=0, type=int)
-parser.add_argument("-ns", "--num_samples", default=0, type=int, help="Number of total samples")
-parser.add_argument("-w", "--world", default=torch.cuda.device_count(), type=int)
-parser.add_argument("-p", "--port", default="1234", type=str)
-parser.add_argument("-s", "--scheduling_policy", default="deepspeed", type=str)
-parser.add_argument("-cp", "--cache_policy", default="RAND", type=str)
+parser.add_argument("-sys", "--system_name", choices=Modeling.available_systems(), default="harmony", type=str)
 parser.add_argument("-d", "--dataset", default="sst2", type=str)
+parser.add_argument("-ns", "--num_samples", default=0, type=int, help="Number of total samples across all GPUs")
 parser.add_argument("-bs", "--batch_size", default=250, type=int, help="Batch size per GPU")
-parser.add_argument("-x", "--experiment", default="standard", type=str)
-parser.add_argument("-ec", "--expert_cache_size", default=2, type=int)
-parser.add_argument("-pa", "--path", default="outputs", type=str, help="Specify where to save path")
-parser.add_argument("-eq", "--eq_tokens", default=150, type=int)
+parser.add_argument("-sl", "--seq_len", default=120, type=int)
 parser.add_argument("-m", "--model_name", default="google/switch-base-64", type=str, help="Huggingface model")
 parser.add_argument("-nm", "--name_moe_layer", default="SwitchTransformersSparseMLP", type=str, help="class name of model MoELayers")
 parser.add_argument("-nr", "--name_router", default="router", type=str, help="parameter name of router on MoE")
 parser.add_argument("-ne", "--name_experts", default="experts", type=str, help="parameter name of router on MoE")
 parser.add_argument("-nd", "--name_decoder", default="decoder", type=str, help="module name of model decoder")
 parser.add_argument("-dc", "--dynamic_components", default=["wi", "wo"], type=list, help="parameter names of expert changing weights")
-parser.add_argument("-sys", "--system_name", default="harmony", type=str)
-# For DeepSpeed
-parser.add_argument("--local_rank", default=0, type=int) 
+parser.add_argument("-pa", "--path", default="outputs", type=str, help="Specify where to save path")
 
-args = parser.parse_args()
+args, remaining_argv = parser.parse_known_args()
 
-## Validation
-if args.num_iters == 0 and args.num_samples == 0:
-    print("You must either specify --num_iters or --num_samples")
-    exit(1)
+if args.system_name != "deepspeed-inference":
+    parser.add_argument("-w", "--world_size", default=torch.cuda.device_count(), type=int)
+    parser.add_argument("-p", "--port", default="1234", type=str)
+
+if args.system_name == "harmony":
+    parser.add_argument("-sched", "--scheduling_policy", default="deepspeed", type=str)
+    parser.add_argument("-cp", "--cache_policy", default="RAND", type=str)
+    parser.add_argument("-ec", "--expert_cache_size", default=2, type=int)
+    parser.add_argument("-eq", "--eq_tokens", default=150, type=int)
+
+if args.system_name == "deepspeed-inference":
+    parser.add_argument("--local_rank", default=0, type=int) 
+
+args = parser.parse_args(remaining_argv, namespace=args)
 
 def setup(rank):
     os.environ["HF_HOME"] = "/cache"
     os.environ["HF_DATASETS_CACHE"] = "/cache"
     os.environ["TRITON_HOME"] = "/.triton"
 
-    if args.system_name == "deepspeed":
+    if args.system_name == "deepspeed-inference":
         deepspeed.init_distributed()
     else:
         os.environ["MASTER_ADDR"] = "localhost"
         os.environ["MASTER_PORT"] = args.port
-        dist.init_process_group("nccl", rank=rank, world_size=args.world)
+        dist.init_process_group("nccl", rank=rank, world_size=args.world_size)
 
     torch.cuda.set_device(rank)
 
@@ -99,7 +99,7 @@ def run_inference_workload(rank):
         )
         sampler = DistributedSampler(
             flexible_dataset, 
-            num_replicas=args.world, 
+            num_replicas=dist.get_world_size(), 
             rank=rank, 
             shuffle=True, 
             seed=49
@@ -110,13 +110,9 @@ def run_inference_workload(rank):
             batch_size=args.batch_size
         )
 
-        if args.experiment == "standard":
-            run_standard_experiment(model, tokenizer, loader, f"{ROOT}/{rank}")
-            if rank == 0:
-                save_run_info(ROOT)
-        else:
-            print(f"That experiment, {args.experiment}, is not yet implemented")
-            exit(1)
+        run_standard_experiment(model, tokenizer, loader, f"{ROOT}/{rank}")
+        if rank == 0:
+            save_run_info(ROOT)
 
     except KeyboardInterrupt:
         print(f"Worker {rank} received KeyboardInterrupt, shutting down...")
@@ -126,24 +122,18 @@ def run_inference_workload(rank):
 def run_standard_experiment(model, tokenizer, loader, path):
     latencies = []
 
-    if args.system_name == "deepspeed":
+    if args.system_name == "deepspeed-inference":
         ds_engine = deepspeed.init_inference(
             model.model,
             dtype=torch.float,
             replace_with_kernel_inject=False,
             moe={
                 "enabled": True,
-                "ep_size": args.world, 
+                "ep_size": dist.get_world_size(), 
                 "moe_experts": [model.num_experts],
             }
         )
-        # model.model = ds_engine.module
 
-        # for req in tqdm():
-        #     start = time.time()
-        #     model(req)
-        #     end = time.time()
-        #     latencies.append(end-start)
         with torch.no_grad():
             for batch in tqdm(loader):
                 start = time.time()
@@ -172,11 +162,16 @@ def run_standard_experiment(model, tokenizer, loader, path):
 
     file_path = f"{path}/e2e.csv"
     with open(file_path, "w") as f:
-        fieldnames = ["Iteration Number", "Latency (s)"]
+        fieldnames = ["iteration", "latency (s)"]
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         for idx, latency in enumerate(latencies):
-            writer.writerow({"Iteration Number": idx, "Latency (s)": latency})
+            writer.writerow(
+                {
+                    "iteration": idx, 
+                    "latency (s)": latency
+                    }
+            )
 
 def warmup(model, loader):
     NUM_WARMUP_ROUNDS = 3
@@ -210,8 +205,13 @@ def create_save_dir_if_not_exist(path):
         os.makedirs(path, exist_ok=True)
 
 def save_run_info(path):
-     with open(f"{path}/data.json", "w") as f:
-        json.dump(vars(args), f)
+    run_info = vars(args).copy()
+
+    if args.system_name == "deepspeed-inference" and dist.is_initialized():
+        run_info["world_size"] = dist.get_world_size()
+
+    with open(f"{path}/data.json", "w") as f:
+        json.dump(run_info, f, indent=4)
 
 def signal_handler(sig, frame):
     print("Main process received Ctrl+C! Terminating all child processes...")
@@ -223,8 +223,8 @@ def signal_handler(sig, frame):
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, signal_handler)
 
-    if args.system_name == "deepspeed":
+    if args.system_name == "deepspeed-inference":
         # Assumes you execute with deepspeed command
         run_inference_workload(args.local_rank) 
     else:
-        mp.spawn(run_inference_workload, nprocs=args.world, join=True)
+        mp.spawn(run_inference_workload, nprocs=args.world_size, join=True)

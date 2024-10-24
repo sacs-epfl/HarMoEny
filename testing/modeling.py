@@ -21,7 +21,6 @@ class Modeling:
                 dynamic_components=dynamic_components,
                 eq_tokens=eq_tokens,
                 d_model=self.config.d_model,
-                max_num_toks_local=seq_len * batch_size,
             )
             self.moe_layers = replace_moe_layer(
                 self.model, 
@@ -40,7 +39,7 @@ class Modeling:
                 name_decoder,
                 self.config,
             )
-        elif system_name == "deepspeed":
+        elif system_name == "deepspeed-inference":
             self.moe_layers = replace_deepspeed_layer(
                 self.model,
                 name_moe_layer,
@@ -67,6 +66,7 @@ class Modeling:
     def save_statistics(self, path):
         if self.moe_layers:
             for layer in self.moe_layers:
-                if not isinstance(layer, MoELayer):
-                    break
                 layer.save_statistics(DIR=path)
+    
+    def available_systems():
+        return ["deepspeed-inference", "harmony", "fastmoe"]
