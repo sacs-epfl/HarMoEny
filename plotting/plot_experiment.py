@@ -252,38 +252,51 @@ def plot_maximal_batch_size(path: str):
         fig.write_image(f"{OUTPUT_DIR}/maximal_batch.png")
 
 
-def plot_speedup_across_metric(metric: str, dirs: [str]):
+def plot_speedup_across_metric(variable: str, metric: str, dirs: [str]):
     values = []
 
     for _dir in dirs:
         df = pd.read_csv(f"{_dir}/0/e2e.csv")
+        _len = len(df)
         df = df[df["iteration"] > 3]
-        df = df.sum(axis=0)
+        df = df.mean(axis=0)
         data = read_data(_dir)
         values.append({
-            "metric": data[metric],
-            "policy": data["scheduling_policy"],
-            "time": df["latency (s)"]
+            metric: data[metric],
+            variable: data[variable],
+            "time": df["latency (s)"] * _len
         })
 
     df = pd.DataFrame(values)
-    print(df)
-    metrics = df["metric"].unique()
-    df['speedup'] = float('nan')
-    for m in metrics:
-        deepspeed_value = df[(df["metric"] == m) & (df["policy"] == "deepspeed")]["time"].iloc[0]
-        speedup_values = deepspeed_value / df[df["metric"] == m]["time"]
-        df.loc[df["metric"] == m, "speedup"] = speedup_values
-    
-    df = df.sort_values("policy", axis=0)
-    df["labels"] = [f"{val:.2f}" for val in df["speedup"].tolist()]
-    fig = px.scatter(df, x="policy", y="speedup", color="metric", text="labels", labels={"metric": metric})
-    fig.update_traces(textposition='middle right', marker_size=20)
+
+    df = df.sort_values(variable, axis=0)
+    df["labels"] = [f"{val:.2f}" for val in df["time"].tolist()]
+    fig = px.scatter(df, x=variable, y="time", color=metric, text="labels", labels={"time": "time (s)"})
+    fig.update_traces(textposition="middle right", marker_size=20)
     fig.update_yaxes(rangemode="tozero")
     update_fig_to_theme(fig)
 
     create_dir_if_needed()
-    fig.write_image(f"{OUTPUT_DIR}/speedup_across_{metric}.png")
+    fig.write_image(f"{OUTPUT_DIR}/e2e.png")
+
+    # print(df)
+    # exit(0)
+    # metrics = df[metric].unique()
+    # df['speedup'] = float('nan')
+    # for m in metrics:
+    #     deepspeed_value = df[(df["metric"] == m) & (df["policy"] == "deepspeed")]["time"].iloc[0]
+    #     speedup_values = deepspeed_value / df[df["metric"] == m]["time"]
+    #     df.loc[df["metric"] == m, "speedup"] = speedup_values
+    
+    # df = df.sort_values("policy", axis=0)
+    # df["labels"] = [f"{val:.2f}" for val in df["speedup"].tolist()]
+    # fig = px.scatter(df, x="policy", y="speedup", color="metric", text="labels", labels={"metric": metric})
+    # fig.update_traces(textposition='middle right', marker_size=20)
+    # fig.update_yaxes(rangemode="tozero")
+    # update_fig_to_theme(fig)
+
+    # create_dir_if_needed()
+    # fig.write_image(f"{OUTPUT_DIR}/speedup_across_{metric}.png")
 
 def plot_imbalance_and_oversubscription_across_metric(metric: str, dirs: [str]):
     values = []
@@ -371,8 +384,9 @@ else:
         # Throughput a pretty irrelevant metric given e2e
         #plot_throughput(baseline, sys.argv[3:])
     elif plotting_type == "metric":
-        metric = sys.argv[2]
-        plot_speedup_across_metric(metric, sys.argv[3:])
-        plot_imbalance_and_oversubscription_across_metric(metric, sys.argv[3:])
+        variable = sys.argv[2]
+        metric = sys.argv[3]
+        plot_speedup_across_metric(variable, metric, sys.argv[4:])
+        #plot_imbalance_and_oversubscription_across_metric(metric, sys.argv[4:])
     else:
         print("No plotting type of that scheduling_policy")

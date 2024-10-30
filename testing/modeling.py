@@ -1,3 +1,5 @@
+import os 
+
 from transformers import AutoModel 
 
 from harmonymoe.utils import replace_moe_layer
@@ -30,7 +32,15 @@ class Modeling:
                 name_decoder,
                 config,
             )
-        elif system_name == "fastmoe":
+        elif system_name == "fastmoe" or system_name == "fastermoe":
+            if system_name == "fastermoe":
+                os.environ["FMOE_FASTER_SCHEDULE_ENABLE"] = "1"
+                os.environ["FMOE_FASTER_GROUP_SIZE"] = "8"
+                os.environ["FMOE_FASTER_SHADOW_ENABLE"] = "1"
+                os.environ["FMOE_FASTER_GLBPLC_ALPHA"] = "4"
+                os.environ["FMOE_FASTER_GLBPLC_GPUTP"] = "13e12"
+                os.environ["FMOE_FASTER_GLBPLC_NETBW"] = "22.46"
+
             self.moe_layers = replace_fmoe_layer(
                 self.model,
                 name_moe_layer,
@@ -69,4 +79,4 @@ class Modeling:
                 layer.save_statistics(DIR=path)
     
     def available_systems():
-        return ["deepspeed-inference", "harmony", "fastmoe"]
+        return ["deepspeed-inference", "harmony", "fastmoe", "fastermoe"]

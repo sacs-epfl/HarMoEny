@@ -1,4 +1,4 @@
-FROM nvcr.io/nvidia/pytorch:24.06-py3
+FROM nvcr.io/nvidia/pytorch:21.10-py3
 
 # Accept build arguments for user/group IDs
 ARG USER_ID
@@ -10,8 +10,7 @@ RUN pip install \
     huggingface_hub==0.26.1 \
     datasets==3.0.2 \
     nvidia-ml-py3==7.352.0  \
-    transformers==4.46.0  \
-    deepspeed==0.15.3 
+    transformers==4.46.0
 
 RUN pip install -U kaleido==0.2.1
 
@@ -22,12 +21,14 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Clone and install FastMoE
-RUN git clone https://github.com/laekov/fastmoe.git /workspace/fastmoe && \
-    cd /workspace/fastmoe && \
-    git checkout ee3c5615a5588c65273a512de82f19ca287e1bdf && \
+# Clone and install SmartMoE
+RUN git clone https://github.com/thu-pacman/SmartMoE-AE.git /workspace/smartmoe && \
+    cd /workspace/smartmoe && \
+    git checkout e19b3a994db5f7614778fd02c48f602ba9d9ac6e && \
+    cd /workspace/smartmoe/src/fastmoe && \
+    sed -i "s/name='fastmoe'/name='smartmoe'/" setup.py && \
     git submodule update --init --recursive && \
-    pip install .
+    USE_NCCL=1 /opt/smartmoe_env/bin/pip install .
 
 # Create Triton directory
 RUN mkdir -p /.triton/autotune
@@ -48,6 +49,3 @@ USER ${USER_NAME}
 
 # Set the working directory
 WORKDIR /workspace
-
-# Set the PYTHONPATH environment variable for FastMoE
-#ENV PYTHONPATH="/workspace/fastmoe:${PYTHONPATH}"

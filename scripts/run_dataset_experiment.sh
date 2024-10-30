@@ -1,6 +1,6 @@
 #!/bin/bash
 
-datasets=("wikitext" "bookcorpus" "random" "sst2" "wmt10")
+datasets=("wikitext" "bookcorpus" "random" "wmt19")
 num_samples=450000
 
 date_str=$(date +"%Y-%m-%d")
@@ -25,7 +25,17 @@ do
         --system_name fastmoe \
         --dataset $dataset \
         --num_samples $num_samples \
-        --batch_size 3250 \
+        --batch_size 3000 \
+        --seq_len 60 \
+        --model_name "google/switch-base-128" \
+        --world_size 8 \
+        --pa "$output_path/$dataset"
+    
+    python3 start.py \
+        --system_name fastermoe \
+        --dataset $dataset \
+        --num_samples $num_samples \
+        --batch_size 3000 \
         --seq_len 60 \
         --model_name "google/switch-base-128" \
         --world_size 8 \
