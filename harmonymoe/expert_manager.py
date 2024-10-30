@@ -120,6 +120,8 @@ class ExpertManager():
         return expert_idx in self.cache[self.rank]
     
     def direct_execute_job(self, workload: list, schedule=None):
+        sizes = list(map(lambda x: x.size(dim=0), workload))
+        experts_to_execute = list(filter(lambda e: sizes[e] != 0, range(self.num_experts)))
         for expert_idx in range(self.num_experts):
             if workload[expert_idx].size(dim=0) == 0:
                 continue

@@ -151,7 +151,8 @@ class Scheduler():
                 if target == -1:
                     raise Exception("Failure on the deck: there is an expert overboard")
                 schedule[i][j][target] = meta[i][j].item()
-        
+      #  print(f"(rank={self.rank}) {schedule}")
+       # exit(0)
         return schedule
 
 

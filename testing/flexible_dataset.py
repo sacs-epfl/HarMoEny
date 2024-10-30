@@ -23,6 +23,8 @@ class FlexibleDataset(Dataset):
             self.dataset = load_dataset("glue", "sst2", split=f"train[:{num_samples}]", streaming=False, cache_dir="/cache")
         elif self.dataset_option == "wmt19":
             self.dataset = load_dataset("wmt/wmt19", "de-en", split=f"train[:{num_samples}]", streaming=False, cache_dir="/cache")
+        elif self.dataset_option == "arxiver":
+            self.dataset = load_dataset("neuralwork/arxiver", split=f"train[:{num_samples}]", straming=False, cache_dir="/cache")
         elif self.dataset_option == "random":
             pass
         else:
@@ -41,6 +43,8 @@ class FlexibleDataset(Dataset):
             encoder = "summarize: " + self.dataset[idx]["text"]
         elif self.dataset_option == "sst2":
             encoder = "summarize: " + self.dataset[idx]["sentence"]
+        elif self.dataset_option == "arxiver":
+            encoder = "summarize: " + self.dataset[idx]["abstract"]
         elif self.dataset_option == "wmt19":
             encoder = "translate English to German: " + self.dataset[idx]["translation"]["en"]
         elif self.dataset_option == "random":

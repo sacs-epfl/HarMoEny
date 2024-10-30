@@ -7,6 +7,90 @@ import torch.distributed as dist
 from transformers.activations import ACT2FN
 from transformers.models.switch_transformers.modeling_switch_transformers import SwitchTransformersDenseActDense
 
+
+############## Timed Dense ####################
+class TimedDense(SwitchTransformersDenseActDense):
+    def __init__(self, layer_idx, is_decoder, **kwargs):
+        super().__init__(**kwargs)
+
+        self.layer_idx = layer_idx
+        self.is_decoder = is_decoder
+
+        self.latencies = []
+        self.start_event = torch.cuda.Event(enable_timing=True)
+        self.end_event = torch.cuda.Event(enable_timing=True)
+
+    def forward(self, x: torch.Tensor):
+        self.start_event.record()
+        x = super().forward(x)
+        self.end_event.record()
+        self.end_event.synchronize()
+        self.latencies.append(self.start_event.elapsed_time(self.end_event))
+        return x
+    
+    def save_statistics(self, DIR):
+        path = f"{DIR}/dense"
+        if self.is_decoder:
+            path += "_decoder"
+        path += f"_layer-{self.layer_idx}"
+
+        with open(f"{path}.csv", "w") as f:
+            fieldnames = ["iteration", "latency (ms)"]
+
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+
+            for i in range(len(self.latencies)):
+                dic = {
+                    "iteration": i,
+                    "latency (ms)": self.latencies[i],
+                }
+             
+                writer.writerow(dic)
+
+def replace_dense_layer(model, target, decoder_name, config):
+    _replace_dense_layer(model, target, [0], False, decoder_name, config)
+
+    return get_dense_layers([], model, target)
+
+def _replace_dense_layer(model, target, layer_idx, is_decoder, decoder_name, config):
+    for name, module in model.named_children():
+        if name == decoder_name:
+            is_decoder = True 
+            layer_idx[0] = 0
+        elif type(module).__name__ == target:
+            mlp = getattr(module, "mlp")
+            if type(mlp).__name__ == "SwitchTransformersDenseActDense":
+                new_dense = TimedDense(layer_idx[0], is_decoder, config=config)
+
+                # Move the weights over
+                with torch.no_grad():
+                    new_dense.wi.weight.copy_(mlp.wi.weight)
+                    new_dense.wo.weight.copy_(mlp.wo.weight)
+
+                layer_idx[0] += 1
+
+                setattr(module, "mlp", new_dense)
+        else:
+            _replace_dense_layer(
+                module, 
+                target, 
+                layer_idx,
+                is_decoder,
+                decoder_name,
+                config,
+            )  
+
+def get_dense_layers(acc, model, target):
+    for module in model.children():
+        if isinstance(module, TimedDense):
+            acc.append(module)
+        else:
+            acc = get_dense_layers(acc, module, target)
+    return acc
+    
+
+
 ############## FastMoE ########################
 from fmoe.layers import FMoE
 

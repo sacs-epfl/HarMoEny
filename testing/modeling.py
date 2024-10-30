@@ -5,10 +5,10 @@ from transformers import AutoModel
 from harmonymoe.utils import replace_moe_layer
 from harmonymoe.moe_layer import MoEConfig, MoELayer
 
-from .utils import replace_fmoe_layer, replace_deepspeed_layer
+from .utils import replace_fmoe_layer, replace_deepspeed_layer, replace_dense_layer
 
 class Modeling:
-    def __init__(self, model_name="google/switch-base-64", system_name="harmony", scheduling_policy="deepspeed", cache_policy="RAND", expert_cache_size=1, dynamic_components=[], eq_tokens=150, name_moe_layer="", name_router="", name_experts="", name_decoder="", batch_size=1000, seq_len=120, **kwargs):
+    def __init__(self, model_name="google/switch-base-64", system_name="harmony", scheduling_policy="deepspeed", cache_policy="RAND", expert_cache_size=1, dynamic_components=[], eq_tokens=150, name_moe_layer="", name_router="", name_experts="", name_decoder="", time_dense=False, name_dense="SwitchTransformersLayerFF", batch_size=1000, seq_len=120, **kwargs):
         self.model_name = model_name
         self.model = AutoModel.from_pretrained(model_name, cache_dir="/cache")
         self.config = self.model.config
@@ -60,6 +60,15 @@ class Modeling:
             )
         else:
             raise Exception("This sytem is not implemented")
+
+
+        if time_dense:
+            self.dense = replace_dense_layer(
+                self.model,
+                name_dense,
+                name_decoder,
+                self.config,
+            )
     
     def __call__(self, batch):
         if "switch" in self.model_name:
@@ -76,6 +85,9 @@ class Modeling:
     def save_statistics(self, path):
         if self.moe_layers:
             for layer in self.moe_layers:
+                layer.save_statistics(DIR=path)
+        if self.dense:
+            for layer in self.dense:
                 layer.save_statistics(DIR=path)
     
     def available_systems():

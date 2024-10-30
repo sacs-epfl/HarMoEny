@@ -40,6 +40,12 @@ class MoELayer(nn.Module):
         self.start_event = torch.cuda.Event(enable_timing=True)
         self.end_event = torch.cuda.Event(enable_timing=True)
 
+        self.computation_latencies = []
+        self.comp_start_event = torch.cuda.Event(enable_timing=True)
+        self.comp_end_event = torch.cuda.Event(enable_timing=True)
+
+        self.expert_freqs = []
+
         # Create our scheduler and exper manager
         self.scheduler = Scheduler(
             scheduling_policy=config.scheduling_policy if not self.is_decoder else "deepspeed", 
@@ -70,7 +76,7 @@ class MoELayer(nn.Module):
         path += f"_layer-{self.layer_idx}"
 
         with open(f"{path}.csv", "w") as f:
-            fieldnames = ["iteration", "total number of tokens sent", "total number of tokens recv", "latency (ms)"]
+            fieldnames = ["iteration", "total number of tokens sent", "total number of tokens recv", "latency (ms)", "comp latency (ms)", "expert distribution"]
 
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
@@ -78,12 +84,14 @@ class MoELayer(nn.Module):
             for i in range(len(self.tot_num_toks_send)):
                 dic = {
                     "iteration": i,
+                    "latency (ms)": self.latencies[i],
+                    "comp latency (ms)": self.computation_latencies[i],
                     "total number of tokens sent": self.tot_num_toks_send[i],
                     "total number of tokens recv": self.tot_num_toks_recv[i],
-                    "latency (ms)": self.latencies[i],
+                    "expert distribution": self.expert_freqs[i],
                 }
              
-                writer.writerow(dic)
+                writer.writerow(dic)        
 
     @torch.no_grad()
     def forward(self, hidden_states):
@@ -93,8 +101,11 @@ class MoELayer(nn.Module):
         # router_mask has dim (batch_size, seq_len, num_experts)
         # Entry will be a 1 on which expert to work on for the specific token
         # at specific sequence index on specific sample, rest will be 0
+
+        self.expert_freqs.append(router_mask.sum(dim=(0,1)).tolist())
         
         expert_index = torch.argmax(router_mask, dim=-1)
+
         router_mask = router_mask.bool()
 
         num_toks_per_expert = []
@@ -125,9 +136,11 @@ class MoELayer(nn.Module):
         dist.all_to_all(tokens_recv, tokens_send)
 
         expert_tokens = self.scheduler.group_experts(schedule, tokens_recv)
-        
+        self.comp_start_event.record()
         expert_tokens = self.expert_manager(expert_tokens, schedule=schedule)
-
+        self.comp_end_event.record()
+        self.comp_end_event.synchronize()
+        self.computation_latencies.append(self.comp_start_event.elapsed_time(self.comp_end_event))
         tokens_recv = self.scheduler.ungroup_experts(schedule, expert_tokens)
 
         dist.all_to_all(tokens_send, tokens_recv)

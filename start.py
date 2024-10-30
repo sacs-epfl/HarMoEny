@@ -45,6 +45,7 @@ parser.add_argument("-ne", "--name_experts", default="experts", type=str, help="
 parser.add_argument("-nd", "--name_decoder", default="decoder", type=str, help="module name of model decoder")
 parser.add_argument("-dc", "--dynamic_components", default=["wi", "wo"], type=list, help="parameter names of expert changing weights")
 parser.add_argument("-pa", "--path", default="outputs", type=str, help="Specify where to save path")
+parser.add_argument("-td", "--time_dense", default=False, type=str2bool, help="If you want to time the dense feed-forward")
 
 args, remaining_argv = parser.parse_known_args()
 
