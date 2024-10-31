@@ -5,7 +5,7 @@ from transformers import AutoModel
 from harmonymoe.utils import replace_moe_layer
 from harmonymoe.moe_layer import MoEConfig, MoELayer
 
-from .utils import replace_fmoe_layer, replace_deepspeed_layer, replace_dense_layer
+from utils import replace_fmoe_layer, replace_deepspeed_layer, replace_dense_layer
 
 class Modeling:
     def __init__(self, model_name="google/switch-base-64", system_name="harmony", scheduling_policy="deepspeed", cache_policy="RAND", expert_cache_size=1, dynamic_components=[], eq_tokens=150, name_moe_layer="", name_router="", name_experts="", name_decoder="", time_dense=False, name_dense="SwitchTransformersLayerFF", batch_size=1000, seq_len=120, **kwargs):
@@ -14,6 +14,9 @@ class Modeling:
         self.config = self.model.config
         self.system_name = system_name
         self.num_experts = self.model.config.num_experts
+
+        self.dense = None 
+        self.moe_layers = None
 
         if system_name == "harmony":
             config = MoEConfig(
@@ -83,10 +86,10 @@ class Modeling:
         self.model.eval()
     
     def save_statistics(self, path):
-        if self.moe_layers:
+        if self.moe_layers is not None:
             for layer in self.moe_layers:
                 layer.save_statistics(DIR=path)
-        if self.dense:
+        if self.dense is not None:
             for layer in self.dense:
                 layer.save_statistics(DIR=path)
     

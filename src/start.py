@@ -21,8 +21,8 @@ import deepspeed
 from torch.utils.data import DataLoader, DistributedSampler
 from transformers import AutoTokenizer
 
-from testing.flexible_dataset import FlexibleDataset
-from testing.modeling import Modeling
+from flexible_dataset import FlexibleDataset
+from modeling import Modeling
 
 def str2bool(s):
     return s.lower() in ["yes", "y", "true", "t"]
@@ -84,7 +84,10 @@ def cleanup():
 def run_inference_workload(rank):
     try:
         mp.current_process().name = f'Worker-{rank}'
-        ROOT = f"{args.path}/{datetime.today().strftime('%Y-%m-%d_%H-%M')}"
+        if args.path == "outputs":
+            ROOT = f"{args.path}/{datetime.today().strftime('%Y-%m-%d_%H-%M')}"
+        else:
+            ROOT = args.path
         setup(rank)
 
         tokenizer = AutoTokenizer.from_pretrained(args.model_name, cache_dir="/cache")
