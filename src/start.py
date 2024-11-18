@@ -90,9 +90,11 @@ def run_inference_workload(rank):
             ROOT = args.path
         setup(rank)
 
-        tokenizer = AutoTokenizer.from_pretrained(args.model_name, cache_dir="/cache")
-        
+        print("hello")
         model = Modeling(**vars(args))
+        print("hello2")
+
+        tokenizer = AutoTokenizer.from_pretrained(args.model_name, cache_dir="/cache")
 
         flexible_dataset = FlexibleDataset(
             args.dataset, 

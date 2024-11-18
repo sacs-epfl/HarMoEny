@@ -12,7 +12,7 @@ import csv
 class MoEConfig:
     layer_idx: int = None
     is_decoder: bool = False
-    scheduling_policy: str = "deepspeed"
+    scheduling_policy: str = "adnexus"
     cache_policy: str = "RAND"
     expert_cache_size: int = None
     dynamic_components: any = None
