@@ -5,16 +5,11 @@ import random
 import torch.distributed as dist
 
 class Scheduler():
-    def __init__(self, scheduling_policy="deepspeed", num_experts=8, eq_tokens=150, num_gpus=None, d_model=768):
-        if num_gpus is None:
-            self.rank = dist.get_rank()
-            self.num_gpus = dist.get_world_size()
-        else: # We are running unit tests
-            self.rank = 0
-            self.num_gpus = num_gpus
+    def __init__(self, scheduling_policy="deepspeed", num_experts=8, eq_tokens=150, num_gpus=1, d_model=768):
         self.num_experts = num_experts
         self.eq_tokens = eq_tokens
         self.d_model = d_model
+        self.num_gpus = num_gpus
 
         self.deepspeed_assign = self.generate_deepspeed_topo()
         self.demeter_offload_assign = self.generate_deepspeed_topo()
@@ -27,8 +22,8 @@ class Scheduler():
             case "deepspeed":
                 self.scheduler = self.schedule_deepspeed
                 self.fixed_assign = self.deepspeed_assign
-            case "adnexus":
-                self.scheduler = self.schedule_adnexus
+            case "harmony":
+                self.scheduler = self.schedule_harmony
                 self.reference_assign = self.deepspeed_assign
             case "even_split":
                 self.scheduler = self.schedule_even_split
@@ -59,8 +54,8 @@ class Scheduler():
         for j in range(self.num_experts):
             start = 0
             for i in range(self.num_gpus):
-                if schedule[self.rank][j][i] != 0:
-                    size = schedule[self.rank][j][i]
+                if schedule[dist.get_rank()][j][i] != 0:
+                    size = schedule[dist.get_rank()][j][i]
                     distribution[i].append(hidden_states[router_mask[:,:,j]][start:start+size,:])
                     start += size
 
@@ -72,8 +67,8 @@ class Scheduler():
         for i in range(self.num_gpus):
             start = 0
             for j in range(self.num_experts):
-                if schedule[self.rank][j][i] != 0:
-                    size = schedule[self.rank][j][i]
+                if schedule[dist.get_rank()][j][i] != 0:
+                    size = schedule[dist.get_rank()][j][i]
                     hidden_states[router_mask[:,:,j]][expert_start_idx[j]:expert_start_idx[j]+size,:] = gpu_tokens[i][start:start+size,:]
                     start += size
 
@@ -85,7 +80,7 @@ class Scheduler():
         for i in range(self.num_gpus):
             num_tokens = 0
             for j in range(self.num_experts):
-                num_tokens += schedule[i][j][self.rank]
+                num_tokens += schedule[i][j][dist.get_rank()]
             recv.append(torch.empty((num_tokens, self.d_model), device="cuda"))
         
         return recv
@@ -98,8 +93,8 @@ class Scheduler():
             start = 0
             end = 0
             for j in range(self.num_experts):
-                if schedule[i][j][self.rank] != 0:
-                    end += schedule[i][j][self.rank]
+                if schedule[i][j][dist.get_rank()] != 0:
+                    end += schedule[i][j][dist.get_rank()]
                     expert_tokens[j].append(gpu_tokens[i][start:end])
                     start = end
 
@@ -113,8 +108,8 @@ class Scheduler():
             start = 0
             end = 0
             for i in range(self.num_gpus):
-                if schedule[i][j][self.rank] != 0:
-                    end += schedule[i][j][self.rank]
+                if schedule[i][j][dist.get_rank()] != 0:
+                    end += schedule[i][j][dist.get_rank()]
                     gpu_tokens[i].append(expert_tokens[j][start:end])
                     start = end
 
@@ -174,7 +169,7 @@ class Scheduler():
 
         return schedule
 
-    def schedule_adnexus(self, meta, topology):
+    def schedule_harmony(self, meta, topology):
         schedule = self.schedule_deepspeed(meta, topology)
         avg = int(sum(map(lambda t: sum(t).item(), meta)) / self.num_gpus) 
 
@@ -257,7 +252,7 @@ class Scheduler():
 
         for i in range(self.num_gpus):
             while gpu_amt[i] > avg:
-            #    if self.rank == 0:
+            #    if dist.get_rank() == 0:
               #      print(f"ITER: {i}")
                 # Find expert with most
                 most = -1
@@ -273,7 +268,7 @@ class Scheduler():
                 if most == 0:
                     break
                 
-               # if self.rank == 0:
+               # if dist.get_rank() == 0:
                #     print(f"Most: {most_idx}")
 
 
@@ -289,7 +284,7 @@ class Scheduler():
                 if sender_idx == -1:
                     raise Exception("Impossible exception occured")
 
-             #   if self.rank == 0:
+             #   if dist.get_rank() == 0:
                #     print(f"Sender: {sender_idx}")
 
                 # Find offload GPU for that expert
@@ -304,14 +299,14 @@ class Scheduler():
                 if gpu_amt[offload_gpu_idx] >= avg:
                     break 
 
-             #   if self.rank == 0:
+             #   if dist.get_rank() == 0:
                #     print(f"Offload: {offload_gpu_idx}")
 
                 #print(f"GPU:{i} overloaded moving expert:{most_idx} from GPU:{sender_idx} to GPU:{offload_gpu_idx}")
                 # Move as much as possible
                 # If cannot move more than eq_tokens break 
                 num_tokens = min(sender_amt, avg - gpu_amt[offload_gpu_idx])
-             #   if self.rank == 0:
+             #   if dist.get_rank() == 0:
                #     print(num_tokens)
                 schedule[sender_idx][most_idx][i] -= num_tokens
                 schedule[sender_idx][most_idx][offload_gpu_idx] += num_tokens

@@ -1,12 +1,11 @@
-num_samples=1000000
+num_samples=1040000
 output_path="outputs/experiment_2/$(date +"%Y-%m-%d_%H-%M")"
 
 datasets=("random" "wikitext" "bookcorpus" "wmt19")
 cd ..
 for dataset in "${datasets[@]}" 
 do 
-    python3 src/start.py \
-        --system_name harmony \
+    python3 src/start_harmony.py \
         --dataset $dataset \
         --num_samples $num_samples \
         --batch_size 2000 \
@@ -15,22 +14,20 @@ do
         --scheduling_policy "deepspeed" \
         --expert_cache_size 16 \
         --world_size 8 \
-        --pa "$output_path/$dataset/deepspeed"
+        --pa "$output_path/$dataset/deepspeed_policy"
 
-    python3 src/start.py \
-        --system_name harmony \
+    python3 src/start_harmony.py \
         --dataset $dataset \
         --num_samples $num_samples \
         --batch_size 5250 \
         --seq_len 60 \
         --model_name "google/switch-base-128" \
-        --scheduling_policy "adnexus" \
+        --scheduling_policy "harmony" \
         --expert_cache_size 16 \
         --world_size 8 \
-        --pa "$output_path/$dataset/adnexus"
+        --pa "$output_path/$dataset/harmony"
     
-    python3 src/start.py \
-        --system_name harmony \
+    python3 src/start_harmony.py \
         --dataset $dataset \
         --num_samples $num_samples \
         --batch_size 5250 \
@@ -41,8 +38,7 @@ do
         --world_size 8 \
         --pa "$output_path/$dataset/drop"
     
-    python3 src/start.py \
-        --system_name harmony \
+    python3 src/start_harmony.py \
         --dataset $dataset \
         --num_samples $num_samples \
         --batch_size 5250 \
@@ -52,16 +48,4 @@ do
         --expert_cache_size 16 \
         --world_size 8 \
         --pa "$output_path/$dataset/even_split"
-    
-    python3 src/start.py \
-        --system_name harmony \
-        --dataset $dataset \
-        --num_samples $num_samples \
-        --batch_size 5000 \
-        --seq_len 60 \
-        --model_name "google/switch-base-128" \
-        --scheduling_policy "adfabricus" \
-        --expert_cache_size 16 \
-        --world_size 8 \
-        --pa "$output_path/$dataset/adfabricus"
 done

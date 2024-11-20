@@ -12,7 +12,6 @@ import stat
 import json
 import numpy as np
 import signal
-import argparse
 import math
 import random
 from tqdm import tqdm
@@ -23,46 +22,9 @@ from transformers import AutoTokenizer
 
 from flexible_dataset import FlexibleDataset
 from modeling import Modeling
+from parser import parse_arguments
 
-def str2bool(s):
-    return s.lower() in ["yes", "y", "true", "t"]
-
-# Argparse
-parser = argparse.ArgumentParser(
-    prog="MoE workload generator",
-    description="Spawns MoE model across GPUs and e2e iteration times",
-)
-
-parser.add_argument("-sys", "--system_name", choices=Modeling.available_systems(), default="harmony", type=str)
-parser.add_argument("-d", "--dataset", default="sst2", type=str)
-parser.add_argument("-ns", "--num_samples", default=0, type=int, help="Number of total samples across all GPUs")
-parser.add_argument("-bs", "--batch_size", default=250, type=int, help="Batch size per GPU")
-parser.add_argument("-sl", "--seq_len", default=120, type=int)
-parser.add_argument("-m", "--model_name", default="google/switch-base-64", type=str, help="Huggingface model")
-parser.add_argument("-nm", "--name_moe_layer", default="SwitchTransformersSparseMLP", type=str, help="class name of model MoELayers")
-parser.add_argument("-nr", "--name_router", default="router", type=str, help="parameter name of router on MoE")
-parser.add_argument("-ne", "--name_experts", default="experts", type=str, help="parameter name of router on MoE")
-parser.add_argument("-nd", "--name_decoder", default="decoder", type=str, help="module name of model decoder")
-parser.add_argument("-dc", "--dynamic_components", default=["wi", "wo"], type=list, help="parameter names of expert changing weights")
-parser.add_argument("-pa", "--path", default="outputs", type=str, help="Specify where to save path")
-parser.add_argument("-td", "--time_dense", default=False, type=str2bool, help="If you want to time the dense feed-forward")
-
-args, remaining_argv = parser.parse_known_args()
-
-if args.system_name != "deepspeed-inference":
-    parser.add_argument("-w", "--world_size", default=torch.cuda.device_count(), type=int)
-    parser.add_argument("-p", "--port", default="1234", type=str)
-
-if args.system_name == "harmony":
-    parser.add_argument("-sched", "--scheduling_policy", default="deepspeed", type=str)
-    parser.add_argument("-cp", "--cache_policy", default="RAND", type=str)
-    parser.add_argument("-ec", "--expert_cache_size", default=2, type=int)
-    parser.add_argument("-eq", "--eq_tokens", default=150, type=int)
-
-if args.system_name == "deepspeed-inference":
-    parser.add_argument("--local_rank", default=0, type=int) 
-
-args = parser.parse_args(remaining_argv, namespace=args)
+args = parse_arguments()
 
 def setup(rank):
     os.environ["HF_HOME"] = "/cache"
@@ -228,6 +190,8 @@ def signal_handler(sig, frame):
 
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, signal_handler)
+
+
 
     if args.system_name == "deepspeed-inference":
         # Assumes you execute with deepspeed command

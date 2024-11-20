@@ -11,13 +11,13 @@ import csv
 @dataclass
 class MoEConfig:
     layer_idx: int = None
-    is_decoder: bool = False
     scheduling_policy: str = "adnexus"
     cache_policy: str = "RAND"
     expert_cache_size: int = None
     dynamic_components: any = None
     eq_tokens: int = 150
     d_model: int = 768
+    world_size: int = 1
 
 class MoELayer(nn.Module):
     def __init__(self, router, experts, config=MoEConfig):
@@ -27,31 +27,26 @@ class MoELayer(nn.Module):
         self.router = router 
 
         self.layer_idx = config.layer_idx
-        self.is_decoder = config.is_decoder
 
         self.num_experts = len(experts)
-        self.num_gpus = dist.get_world_size()
-        self.rank = dist.get_rank()
+        self.num_gpus = config.world_size
 
         # For statistics 
         self.tot_num_toks_send = []
         self.tot_num_toks_recv = []
         self.latencies = []
-        self.start_event = torch.cuda.Event(enable_timing=True)
-        self.end_event = torch.cuda.Event(enable_timing=True)
 
         self.computation_latencies = []
-        self.comp_start_event = torch.cuda.Event(enable_timing=True)
-        self.comp_end_event = torch.cuda.Event(enable_timing=True)
 
         self.expert_freqs = []
 
         # Create our scheduler and exper manager
         self.scheduler = Scheduler(
-            scheduling_policy=config.scheduling_policy if not self.is_decoder else "deepspeed", 
+            scheduling_policy=config.scheduling_policy, 
             num_experts=self.num_experts,
             eq_tokens=config.eq_tokens,
             d_model=config.d_model,
+            num_gpus=self.num_gpus,
         )
 
         self.expert_manager = ExpertManager(
@@ -61,19 +56,24 @@ class MoELayer(nn.Module):
             fixed_cache=self.scheduler.get_fixed_assign(),
             reference_cache=self.scheduler.get_reference_assign(),
             cache_policy=config.cache_policy,
+            num_gpus=self.num_gpus,
         )
     
     # This is called on all modules to apply certain functions such as cuda
     def _apply(self, fn):
-        fn(self.router)
-        fn(self.expert_manager)
+        try:
+            fn(self.router)
+        except:
+            pass
+        try:
+            fn(self.expert_manager)
+        except Exception as e:
+            print(f"Error applying function '{repr(fn)}' to 'expert_manager': {e}")
+
         return self
 
     def save_statistics(self, DIR=""):
-        path = f"{DIR}/moe"
-        if self.is_decoder:
-            path += "_decoder"
-        path += f"_layer-{self.layer_idx}"
+        path = f"{DIR}/moe_layer-{self.layer_idx}"
 
         with open(f"{path}.csv", "w") as f:
             fieldnames = ["iteration", "total number of tokens sent", "total number of tokens recv", "latency (ms)", "comp latency (ms)", "expert distribution"]
@@ -95,7 +95,9 @@ class MoELayer(nn.Module):
 
     @torch.no_grad()
     def forward(self, hidden_states):
-        self.start_event.record()
+        start_event = torch.cuda.Event(enable_timing=True)
+        end_event = torch.cuda.Event(enable_timing=True)
+        start_event.record()
 
         router_mask, router_probs, router_logits = self.router(hidden_states)
         # router_mask has dim (batch_size, seq_len, num_experts)
@@ -136,20 +138,22 @@ class MoELayer(nn.Module):
         dist.all_to_all(tokens_recv, tokens_send)
 
         expert_tokens = self.scheduler.group_experts(schedule, tokens_recv)
-        self.comp_start_event.record()
+        comp_start_event = torch.cuda.Event(enable_timing=True)
+        comp_end_event = torch.cuda.Event(enable_timing=True)
+        comp_start_event.record()
         expert_tokens = self.expert_manager(expert_tokens, schedule=schedule)
-        self.comp_end_event.record()
-        self.comp_end_event.synchronize()
-        self.computation_latencies.append(self.comp_start_event.elapsed_time(self.comp_end_event))
+        comp_end_event.record()
+        comp_end_event.synchronize()
+        self.computation_latencies.append(comp_start_event.elapsed_time(comp_end_event))
         tokens_recv = self.scheduler.ungroup_experts(schedule, expert_tokens)
 
         dist.all_to_all(tokens_send, tokens_recv)
 
         hidden_states = self.scheduler.gather_tokens(schedule, tokens_send, hidden_states, router_mask)
 
-        self.end_event.record()
-        self.end_event.synchronize()
-        self.latencies.append(self.start_event.elapsed_time(self.end_event))
+        end_event.record()
+        end_event.synchronize()
+        self.latencies.append(start_event.elapsed_time(end_event))
 
         hidden_states = router_probs * hidden_states
         return hidden_states, (router_logits, expert_index)
