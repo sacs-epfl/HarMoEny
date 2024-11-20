@@ -220,6 +220,11 @@ class Scheduler():
                         least = gpu_amt[k]
                         least_idx = k
                 
+                if least < self.eq_tokens:
+                    most_tokens -= self.eq_tokens
+                    # If the offload does not have enough tokens we will need to 
+                    # leave enough tokens on the overloaded to fetch the expert from system memory 
+                
                 if least == i:
                     break # Don't offload to yourself
                 
