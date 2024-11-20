@@ -3,6 +3,9 @@ import torch.nn.functional as F
 import torch.nn as nn
 import torch.distributed as dist
 import torch.multiprocessing as mp 
+import pynvml
+import psutil
+from threading import Thread
 import sys
 import os 
 from datetime import datetime 
@@ -11,11 +14,11 @@ import csv
 import stat 
 import json
 import numpy as np
+import pandas as pd
 import signal
 import math
 import random
 from tqdm import tqdm
-import deepspeed
 from copy import deepcopy
 
 from torch.utils.data import DataLoader, DistributedSampler
@@ -37,10 +40,10 @@ parser.add_argument("--world_size", default=torch.cuda.device_count(), type=int)
 parser.add_argument("--port", default="1234", type=str)
 args = parser.parse_arguments()
 
-if not args.path:
-    ROOT = f"{args.path}/{datetime.today().strftime('%Y-%m-%d_%H-%M')}"
-else:
-    ROOT = args.path
+
+############# GLOBAL AFFAIRS ################
+pynvml.nvmlInit()
+#############################################
 
 def get_size(obj):
     obj.cuda()
@@ -61,7 +64,7 @@ def setup(rank):
 
     torch.cuda.set_device(rank)
 
-def run_inference_workload(rank, model):
+def run_inference_workload(rank, model, ROOT):
     try:
         mp.current_process().name = f'Worker-{rank}'
         setup(rank)
@@ -91,7 +94,7 @@ def run_inference_workload(rank, model):
             batch_size=args.batch_size
         )
 
-        latencies = run_standard_experiment(model, loader)
+        latencies, run_start, run_end = run_standard_experiment(model, loader)
         path = f"{ROOT}/{rank}"
         if not os.path.exists(path):
             os.makedirs(path, exist_ok=True)
@@ -112,7 +115,7 @@ def run_inference_workload(rank, model):
         if rank == 0:
             run_info = vars(args).copy()
             with open(f"{ROOT}/data.json", "w") as f:
-                json.dump(run_info, f, indent=4)
+                json.dump({ "start": run_start, "end": run_end, **run_info}, f, indent=4)
 
 
     except KeyboardInterrupt:
@@ -134,6 +137,7 @@ def run_standard_experiment(model, loader):
             if itr == NUM_WARMUP_ROUNDS:
                 break
 
+        run_start = time.time()
         # RUN ACTUAL EXPERIMENT
         for batch in tqdm(loader):
             start = time.time()
@@ -141,11 +145,26 @@ def run_standard_experiment(model, loader):
             model(**batch)
             end = time.time()
             latencies.append(end-start)
+        run_end = time.time()
     
-    return latencies
+    return latencies, run_start, run_end
 
 def cleanup():
     dist.destroy_process_group()
+
+def fetch_metrics(stop_event, output_list, ROOT):
+    handles = [pynvml.nvmlDeviceGetHandleByIndex(index) for index in range(args.world_size)]
+
+    while not stop_event.is_set():
+        output_list.append({
+            "timestamp": time.time(),
+            "gpu_util": [pynvml.nvmlDeviceGetUtilizationRates(handle).gpu for handle in handles],
+            "gpu_mem_used": [pynvml.nvmlDeviceGetMemoryInfo(handle).used for handle in handles],
+            "cpu_util": psutil.cpu_percent(interval=None),
+            "cpu_mem_used": psutil.virtual_memory().used,
+        })
+
+        time.sleep(1)
 
 def signal_handler(sig, frame):
     print("Main process received Ctrl+C! Terminating all child processes...")
@@ -178,16 +197,21 @@ if __name__ == "__main__":
         config,
     )
 
+    if not args.path:
+        ROOT = f"outputs/{datetime.today().strftime('%Y-%m-%d_%H-%M')}"
+    else:
+        ROOT = args.path
+
     metrics = []
     stop_event = mp.Event()
 
-    metric_thread = Thread(target=fetch_metrics, args=(stop_event, metrics))
+    metric_thread = Thread(target=fetch_metrics, args=(stop_event, metrics, ROOT))
     metric_thread.start()
 
     processes = []
     mp.set_start_method('spawn', force=True)
     for i in range(args.world_size):
-        p = mp.Process(target=run_inference_workload, args=(i, model))
+        p = mp.Process(target=run_inference_workload, args=(i, model, ROOT))
         p.start()
         processes.append(p)
     for p in processes:
@@ -197,7 +221,7 @@ if __name__ == "__main__":
     metric_thread.join()
 
     df = pd.DataFrame(metrics)
-    df.to_csv(f"")
+    df.to_csv(f"{ROOT}/stats.csv")
 
     print("All done :)")
 

@@ -1,8 +1,5 @@
 dataset=bookcorpus
 num_samples=10000
-output_path="outputs"
-
-echo $output_path
 
 cd ..
 python3 src/start_harmony.py \
@@ -14,4 +11,3 @@ python3 src/start_harmony.py \
         --scheduling_policy "deepspeed" \
         --expert_cache_size 16 \
         --world_size 8 \
-        --pa "$output_path/harmonymoe"
