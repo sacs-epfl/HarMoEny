@@ -5,8 +5,17 @@ ARG USER_ID
 ARG GROUP_ID
 ARG USER_NAME=userapp
 
+# Install system dependencies for FastMoE
+RUN apt-get update && apt-get install -y \
+    git \
+    cmake \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install system-wide packages
 RUN pip install \
+    setuptools==75.6.0 \
+    wheel==0.45.0 \
     huggingface_hub==0.26.1 \
     datasets==3.0.2 \
     nvidia-ml-py3==7.352.0  \
@@ -14,13 +23,8 @@ RUN pip install \
     deepspeed==0.15.3 
 
 RUN pip install -U kaleido==0.2.1
+RUN python3 -m pip install -v -U --no-build-isolation git+https://github.com/microsoft/tutel@c7559e8
 
-# Install system dependencies for FastMoE
-RUN apt-get update && apt-get install -y \
-    git \
-    cmake \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
 
 # Clone and install FastMoE
 RUN git clone https://github.com/laekov/fastmoe.git /workspace/fastmoe && \

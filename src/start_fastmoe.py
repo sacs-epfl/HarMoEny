@@ -2,7 +2,6 @@
 # https://github.com/laekov/fastmoe
 
 import torch
-import torch.nn.functional as F
 import torch.nn as nn
 import torch.distributed as dist
 import torch.multiprocessing as mp 
@@ -11,16 +10,11 @@ import psutil
 from threading import Thread
 import sys
 import os 
-from datetime import datetime 
 import time
 import csv
-import stat 
 import json
-import numpy as np
 import pandas as pd
 import signal
-import math
-import random
 from tqdm import tqdm
 from copy import deepcopy
 
