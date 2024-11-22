@@ -1,0 +1,17 @@
+,policy,dataset,duration (s)
+0,deepspeed_policy,bookcorpus,257.46547389030457
+1,deepspeed_policy,random,279.1739938259125
+2,deepspeed_policy,wikitext,262.97724509239197
+3,deepspeed_policy,wmt19,247.79764556884766
+4,harmony,bookcorpus,175.73492097854614
+5,harmony,random,175.25939989089966
+6,harmony,wikitext,178.94146704673767
+7,harmony,wmt19,179.8363573551178
+8,drop,bookcorpus,178.00310349464417
+9,drop,random,173.89428544044495
+10,drop,wikitext,183.62497067451477
+11,drop,wmt19,175.66177606582642
+12,even_split,bookcorpus,366.67421197891235
+13,even_split,random,330.6324779987335
+14,even_split,wikitext,354.617684841156
+15,even_split,wmt19,348.6236653327942

@@ -1,0 +1,17 @@
+,policy,dataset,latency (ms)
+0,deepspeed_policy,bookcorpus,0.17143422519459442
+1,deepspeed_policy,random,0.15730014060525332
+2,deepspeed_policy,wikitext,0.16699868639777687
+3,deepspeed_policy,wmt19,0.1309471621793859
+4,harmony,bookcorpus,0.07872539826477466
+5,harmony,random,0.08113390220590189
+6,harmony,wikitext,0.08276699455416932
+7,harmony,wmt19,0.07737977942641901
+8,drop,bookcorpus,0.07595737337903911
+9,drop,random,0.07730349503082483
+10,drop,wikitext,0.07738837562612935
+11,drop,wmt19,0.07548591499588117
+12,even_split,bookcorpus,0.2918037557796556
+13,even_split,random,0.2527306597443665
+14,even_split,wikitext,0.2787110487749787
+15,even_split,wmt19,0.2706984389947385

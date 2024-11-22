@@ -1,0 +1,17 @@
+,policy,dataset,avg imbalance
+0,deepspeed_policy,bookcorpus,425.6735294117647
+1,harmony,bookcorpus,426.12691326530614
+2,drop,bookcorpus,166.6666666666667
+3,even_split,bookcorpus,0.25744047619047616
+4,deepspeed_policy,random,306.17058823529413
+5,harmony,random,306.2408163265306
+6,drop,random,247.50366571450033
+7,even_split,random,0.27687074829931974
+8,deepspeed_policy,wikitext,298.1242647058823
+9,harmony,wikitext,281.1081207482993
+10,drop,wikitext,261.7360194636047
+11,even_split,wikitext,0.27053571428571427
+12,deepspeed_policy,wmt19,547.8860294117646
+13,harmony,wmt19,547.7000850340136
+14,drop,wmt19,247.35160686264973
+15,even_split,wmt19,0.2610119047619047
