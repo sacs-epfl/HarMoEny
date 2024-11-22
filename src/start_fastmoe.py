@@ -25,34 +25,30 @@ from torch.utils.data import DataLoader, DistributedSampler
 from transformers import AutoTokenizer, AutoModel
 
 from flexible_dataset import FlexibleDataset
-from parser import ArgParse
+import argparse 
 
-from harmonymoe.utils import replace_moe_layer, get_moe_experts, get_moe_layers
-from harmonymoe.moe_layer import MoEConfig, MoELayer
+from fmoe.layers import FMoE
+from utils import TimedModule, get_timing_modules
 
-parser = ArgParse()
-parser.add_argument("--scheduling_policy", default="deepspeed", type=str)
-parser.add_argument("--cache_policy", default="RAND", type=str)
-parser.add_argument("--expert_cache_size", default=2, type=int)
-parser.add_argument("--eq_tokens", default=150, type=int)
-parser.add_argument("--world_size", default=torch.cuda.device_count(), type=int)
+parser = argparse.ArgumentParser(
+    prog="Run inference on FastMoE",
+)
+parser.add_argument("--dataset", default="sst2", type=str)
+parser.add_argument("--num_samples", default=0, type=int, help="Number of total samples across all GPUs")
+parser.add_argument("--batch_size", default=250, type=int, help="Batch size per GPU")
+parser.add_argument("--seq_len", default=120, type=int)
+parser.add_argument("--path", default="outputs/out", type=str, help="Specify where to save path")
+parser.add_argument("--num_experts", default=8, type=int, help="Number of experts we want to match dense model to")
+parser.add_argument("--world_size", default=torch.cuda.device_count(), type=int, help="Number of GPUs to use")
 parser.add_argument("--port", default="1234", type=str)
 parser.add_argument("--warmup_rounds", default=3, type=int)
-parser.add_argument("--path", default="outputs/harmony", type=str)
-args = parser.parse_arguments()
+args = parser.parse_args()
 
 
 ############# GLOBAL AFFAIRS ################
 pynvml.nvmlInit()
+NUM_WARMUP_ROUNDS = 3
 #############################################
-
-def get_size(obj):
-    obj.cuda()
-    torch.cuda.synchronize()
-    memory_allocated = torch.cuda.memory_allocated(device=0)
-    obj.cpu()
-    torch.cuda.synchronize()
-    return memory_allocated
 
 def setup(rank):
     os.environ["HF_HOME"] = "/cache"
@@ -65,22 +61,81 @@ def setup(rank):
 
     torch.cuda.set_device(rank)
 
-def run_inference_workload(rank, model):
+def run_inference_workload(rank):
     try:
         mp.current_process().name = f'Worker-{rank}'
         setup(rank)
 
+        moe_group = dist.new_group(ranks=list(range(args.world_size)))
+
+        model_name = f"google/switch-base-{args.num_experts}"
+        model = AutoModel.from_pretrained(model_name, cache_dir="/cache")
+
+        class ExpertWrapper(nn.Module):
+            def __init__(self, child):
+                super().__init__()
+                self.child = child
+            
+            def forward(self, x, _):
+                return self.child(x)
+        
+        class FMoEWrapper(nn.Module):
+            def __init__(self, child):
+                super().__init__()
+                self.child = child
+
+            def forward(self, x):
+                original_shape = x.shape
+                x = x.reshape(-1, 768)
+                output = self.child(x)
+                reshaped_output = output.reshape(original_shape)
+                return reshaped_output
+
+        # Update to add FMoE to it
+        def add_fmoe_model(module, idx):
+            if type(module).__name__ == "SwitchTransformersLayerFF":
+                for child_name, child in module.named_children():
+                    if type(child).__name__ == "SwitchTransformersSparseMLP":
+                        router = getattr(child, "router")
+                        experts = getattr(child, "experts")
+                        if type(experts) == nn.ModuleDict:
+                            experts = list(experts.values())
+                        
+                        num_experts_per_gpu = len(experts) // args.world_size
+
+                        experts = experts[rank*num_experts_per_gpu:(rank+1)*num_experts_per_gpu]
+
+                        new = FMoE(
+                            num_expert=num_experts_per_gpu,
+                            d_model=768,
+                            world_size=args.world_size,
+                            top_k=1,
+                            expert=[lambda _: ExpertWrapper(e) for e in experts],
+                            moe_group=moe_group,
+                        )
+
+                        with torch.no_grad():
+                            new.gate.gate.weight.copy_(router.classifier.weight)
+                        
+                        setattr(module, child_name, TimedModule(FMoEWrapper(new), idx=idx[0]))
+                        idx[0] += 1
+            else:
+                for child in module.children():
+                    add_fmoe_model(child, idx)
+
+        add_fmoe_model(model, [0])
+
         model.cuda()
         model.eval()
 
-        tokenizer = AutoTokenizer.from_pretrained(args.model_name, cache_dir="/cache")
+        tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir="/cache")
 
         flexible_dataset = FlexibleDataset(
             args.dataset, 
             tokenizer, 
             model, 
             seq_len=args.seq_len,
-            num_samples=args.num_samples if args.num_samples != 0 else args.num_iters * args.batch_size * args.world_size
+            num_samples=args.num_samples
         )
         sampler = DistributedSampler(
             flexible_dataset, 
@@ -95,47 +150,42 @@ def run_inference_workload(rank, model):
             batch_size=args.batch_size
         )
 
+        latencies, run_start, run_end = run_standard_experiment(model, loader)
+
         path = f"{args.path}/{rank}"
         if not os.path.exists(path):
             os.makedirs(path, exist_ok=True)
 
-        latencies, run_start, run_end = run_standard_experiment(model, loader)
+        ############# E2E #######################
         file_path = f"{path}/e2e.csv"
         with open(file_path, "w") as f:
             fieldnames = ["iteration", "latency (s)"]
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             for idx, latency in enumerate(latencies):
-                writer.writerow(
-                    {
-                        "iteration": idx, 
-                        "latency (s)": latency
-                        }
-                )
-
-        for l in get_moe_layers(model):
-            file_path = f"{path}/moe_layer-{l.layer_idx}.csv"
-            stats = l.get_statistics()[args.warmup_rounds:]
-
+                writer.writerow({
+                    "iteration": idx, 
+                    "latency (s)": latency,
+                })
+        
+        ############# LAYER #######################
+        for timing_module in get_timing_modules([], model):
+            latencies = timing_module.get_latencies()[args.warmup_rounds:]
+            file_path = f"{path}/layer-{timing_module.idx}.csv"
             with open(file_path, "w") as f:
-                fieldnames = ["iteration", "total number of tokens sent", "total number of tokens recv", "latency (ms)", "comp latency (ms)", "expert distribution"]
-
+                fieldnames = ["iteration", "latency (ms)"]
                 writer = csv.DictWriter(f, fieldnames=fieldnames)
                 writer.writeheader()
-
-                for i in range(len(stats)):
-                    dic = {
-                        "iteration": i,
-                        **stats[i]
-                    }
-                
-                    writer.writerow(dic)   
-
-        if rank == 0:
-            run_info = vars(args).copy()
-            with open(f"{args.path}/data.json", "w") as f:
-                json.dump({ "start": run_start, "end": run_end, **run_info}, f, indent=4)
-
+                for idx, latency in enumerate(latencies):
+                    writer.writerow({
+                        "iteration": idx,
+                        "latency (ms)": latency,
+                    })
+        
+        ############# META #######################
+        run_info = vars(args).copy()
+        with open(f"{args.path}/data.json", "w") as f:
+            json.dump({ "start": run_start, "end": run_end, **run_info}, f, indent=4)
 
     except KeyboardInterrupt:
         print(f"Worker {rank} received KeyboardInterrupt, shutting down...")
@@ -194,27 +244,6 @@ def signal_handler(sig, frame):
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, signal_handler)
 
-    model = AutoModel.from_pretrained(args.model_name, cache_dir="/cache")
-    experts = get_moe_experts(model, args.type_moe, args.name_experts)
-    experts.share_memory()
-    config = MoEConfig(
-        scheduling_policy=args.scheduling_policy,
-        cache_policy=args.cache_policy,
-        expert_cache_size=args.expert_cache_size,
-        dynamic_components=args.dynamic_components,
-        eq_tokens=args.eq_tokens,
-        d_model=args.d_model,
-        world_size=args.world_size,
-    )
-    replace_moe_layer(
-        model, 
-        args.type_moe_parent,
-        args.type_moe, 
-        args.name_router, 
-        experts,
-        config,
-    )
-
     metrics = []
     stop_event = mp.Event()
 
@@ -224,7 +253,7 @@ if __name__ == "__main__":
     processes = []
     mp.set_start_method('spawn', force=True)
     for i in range(args.world_size):
-        p = mp.Process(target=run_inference_workload, args=(i, model))
+        p = mp.Process(target=run_inference_workload, args=(i,))
         p.start()
         processes.append(p)
     for p in processes:

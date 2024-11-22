@@ -1,5 +1,5 @@
 dataset=bookcorpus
-num_samples=1040000
+num_samples=200000
 
 cd ..
 python3 src/start_harmony.py \
@@ -11,3 +11,4 @@ python3 src/start_harmony.py \
         --scheduling_policy "harmony" \
         --expert_cache_size 16 \
         --world_size 8 \
+        --path "outputs/harmony"

@@ -21,7 +21,6 @@ class ArgParse:
         parser.add_argument("--name_experts", default="experts", type=str, help="parameter name of router on MoE")
         parser.add_argument("--name_decoder", default="decoder", type=str, help="module name of model decoder")
         parser.add_argument("--dynamic_components", default=["wi", "wo"], type=list, help="parameter names of expert changing weights")
-        parser.add_argument("--path", default=None, type=str, help="Specify where to save path")
         parser.add_argument("--time_dense", default=False, type=ArgParse.str2bool, help="If you want to time the dense feed-forward")
         parser.add_argument("--d_model", default=768, type=int, help="Dimension of model hidden states")
 

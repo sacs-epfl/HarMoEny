@@ -14,6 +14,7 @@ from torch.utils.data import DataLoader, DistributedSampler
 from transformers import AutoTokenizer, AutoModel
 
 from flexible_dataset import FlexibleDataset
+from utils import TimedModule, get_timing_modules
 
 parser = argparse.ArgumentParser(
     prog="Run inference on t5",
@@ -24,35 +25,15 @@ parser.add_argument("--batch_size", default=250, type=int, help="Batch size per 
 parser.add_argument("--seq_len", default=120, type=int)
 parser.add_argument("--path", default=None, type=str, help="Specify where to save path")
 parser.add_argument("--num_experts", default=8, type=int, help="Number of experts we want to match dense model to")
+parser.add_argument("--warmup_rounds", default=3, type=int)
 args = parser.parse_args()
 
 def run_inference_workload():
     model = AutoModel.from_pretrained("google-t5/t5-base", cache_dir="/cache")
 
-    class TimedModule(nn.Module):
-        def __init__(self, child, idx=0):
-            super().__init__()
-
-            self.child = child
-            self.start = torch.cuda.Event(enable_timing=True)
-            self.end = torch.cuda.Event(enable_timing=True)
-            self.latencies = []
-            self.idx = idx 
-        
-        def forward(self, x):
-            self.start.record()
-            x = self.child(x)
-            self.end.record()
-            self.end.synchronize()
-            self.latencies.append(self.start.elapsed_time(self.end))
-            return x
-        
-        def get_latencies(self):
-            return self.latencies[:]
-
-    def add_timing_model(model, idx):
-        if type(model).__name__ == "T5LayerFF":
-            for child_name, child in model.named_children():
+    def add_timing_model(module, idx):
+        if type(module).__name__ == "T5LayerFF":
+            for child_name, child in module.named_children():
                 if type(child).__name__ == "T5DenseActDense":
                     d_model = child.wi.in_features
                     d_ff_modif = child.wi.out_features * args.num_experts
@@ -60,23 +41,13 @@ def run_inference_workload():
                     child.wi = nn.Linear(d_model, d_ff_modif, bias=False)
                     child.wo = nn.Linear(d_ff_modif, d_model, bias=False)
 
-                    setattr(model, child_name, TimedModule(child, idx=idx[0]))
+                    setattr(module, child_name, TimedModule(child, idx=idx[0]))
                     idx[0] += 1
-
         else:
-            for child in model.children():
+            for child in module.children():
                 add_timing_model(child, idx)
-    
-    def get_timing_modules(acc, model):
-        if type(model).__name__ == "TimedModule":
-            acc.append(model)
-        else:
-            for child in model.children():
-                acc = get_timing_modules(acc, child)
-        return acc 
 
     add_timing_model(model, [0])
-    timing_modules = get_timing_modules([], model)
 
     model.cuda()
     model.eval()
@@ -113,8 +84,8 @@ def run_inference_workload():
             })
     
     ############# LAYER #######################
-    for timing_module in timing_modules:
-        latencies = timing_module.get_latencies()
+    for timing_module in get_timing_modules([], model):
+        latencies = timing_module.get_latencies()[args.warmup_rounds:]
         file_path = f"{args.path}/layer-{timing_module.idx}.csv"
         with open(file_path, "w") as f:
             fieldnames = ["iteration", "latency (ms)"]
@@ -135,14 +106,12 @@ def run_standard_experiment(model, loader):
     latencies = []
 
     with torch.no_grad():
-        # WARMUP
-        NUM_WARMUP_ROUNDS = 3
         itr = 0
         for batch in loader:
             batch = {k: v.cuda() for k, v in batch.items()}
             model(**batch)
             itr += 1
-            if itr == NUM_WARMUP_ROUNDS:
+            if itr == args.warmup_rounds:
                 break
 
         run_start = time.time()

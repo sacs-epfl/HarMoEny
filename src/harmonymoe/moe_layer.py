@@ -72,26 +72,19 @@ class MoELayer(nn.Module):
 
         return self
 
-    def save_statistics(self, DIR=""):
-        path = f"{DIR}/moe_layer-{self.layer_idx}"
+    def get_statistics(self, DIR=""):
+        stats = []
+        for i in range(len(self.tot_num_toks_send)):
+            stats.append({
+                "latency (ms)": self.latencies[i],
+                "comp latency (ms)": self.computation_latencies[i],
+                "total number of tokens sent": self.tot_num_toks_send[i],
+                "total number of tokens recv": self.tot_num_toks_recv[i],
+                "expert distribution": self.expert_freqs[i],
+            })
+        return stats
 
-        with open(f"{path}.csv", "w") as f:
-            fieldnames = ["iteration", "total number of tokens sent", "total number of tokens recv", "latency (ms)", "comp latency (ms)", "expert distribution"]
-
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            writer.writeheader()
-
-            for i in range(len(self.tot_num_toks_send)):
-                dic = {
-                    "iteration": i,
-                    "latency (ms)": self.latencies[i],
-                    "comp latency (ms)": self.computation_latencies[i],
-                    "total number of tokens sent": self.tot_num_toks_send[i],
-                    "total number of tokens recv": self.tot_num_toks_recv[i],
-                    "expert distribution": self.expert_freqs[i],
-                }
              
-                writer.writerow(dic)        
 
     @torch.no_grad()
     def forward(self, hidden_states):

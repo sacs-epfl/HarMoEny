@@ -16,17 +16,6 @@ python3 src/start_harmony.py \
         --world_size 8 \
         --path "$output_path/deepspeed_policy"
 
-# python3 src/start_harmony.py \
-#         --dataset $dataset \
-#         --num_samples $num_samples \
-#         --batch_size 250 \
-#         --seq_len 60 \
-#         --model_name "google/switch-base-32" \
-#         --scheduling_policy "harmony" \
-#         --expert_cache_size 4 \
-#         --world_size 8 \
-#         --path "$output_path/harmony"
-
 python3 src/start_t5_base.py \
         --dataset $dataset \
         --num_samples $(($num_samples / 8)) \
