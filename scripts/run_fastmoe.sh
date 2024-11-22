@@ -8,5 +8,5 @@ python3 src/start_fastmoe.py \
         --batch_size 100 \
         --seq_len 60 \
         --world_size 8 \
-        --num_experts 8 \
+        --num_experts 64 \
         --path "outputs/fastmoe"

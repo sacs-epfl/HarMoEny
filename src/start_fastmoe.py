@@ -47,7 +47,6 @@ args = parser.parse_args()
 
 ############# GLOBAL AFFAIRS ################
 pynvml.nvmlInit()
-NUM_WARMUP_ROUNDS = 3
 #############################################
 
 def setup(rank):
@@ -85,11 +84,11 @@ def run_inference_workload(rank):
                 self.child = child
 
             def forward(self, x):
-                original_shape = x.shape
-                x = x.reshape(-1, 768)
-                output = self.child(x)
-                reshaped_output = output.reshape(original_shape)
-                return reshaped_output
+                batch_size, seq_len, d_model = x.shape
+                x = x.reshape(-1, d_model)  # Shape: [batch_size * seq_len, d_model]
+                output = self.child(x)  # FMoE expects input of shape [tokens, d_model]
+                output = output.reshape(batch_size, seq_len, d_model)
+                return output
 
         # Update to add FMoE to it
         def add_fmoe_model(module, idx):
@@ -101,7 +100,7 @@ def run_inference_workload(rank):
                         if type(experts) == nn.ModuleDict:
                             experts = list(experts.values())
                         
-                        num_experts_per_gpu = len(experts) // args.world_size
+                        num_experts_per_gpu = args.num_experts // args.world_size
 
                         experts = experts[rank*num_experts_per_gpu:(rank+1)*num_experts_per_gpu]
 
@@ -110,7 +109,7 @@ def run_inference_workload(rank):
                             d_model=768,
                             world_size=args.world_size,
                             top_k=1,
-                            expert=[lambda _: ExpertWrapper(e) for e in experts],
+                            expert=[lambda _, e=e: ExpertWrapper(e) for e in experts],
                             moe_group=moe_group,
                         )
 
