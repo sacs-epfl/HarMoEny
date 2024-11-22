@@ -1,5 +1,5 @@
-# https://arxiv.org/pdf/2103.13262
-# https://github.com/laekov/fastmoe
+# https://dl.acm.org/doi/pdf/10.1145/3503221.3508418
+# https://github.com/laekov/fastmoe/tree/master/doc/fastermoe
 
 import torch
 import torch.nn.functional as F
@@ -60,6 +60,19 @@ def setup(rank):
     os.environ["MASTER_ADDR"] = "localhost"
     os.environ["MASTER_PORT"] = args.port
     dist.init_process_group("nccl", rank=rank, world_size=args.world_size)
+
+    # FASTERMOE 
+    # https://github.com/laekov/fastmoe/tree/master/doc/fastermoe
+    ## Smart Scheduling
+    os.environ["FMOE_FASTER_SCHEDULE_ENABLE"] = "1"
+    os.environ["FMOE_FASTER_GROUP_SIZE"] = "2"
+
+    ## Expert Shadowing
+    os.environ["FMOE_FASTER_SHADOW_ENABLE"] = "1"
+    os.environ["FMOE_FASTER_GLBPLC_NETBW"] = "10.13e12" # Run the get_gemm in info
+    os.environ["FMOE_FASTER_GLBPLC_GPUTP"] = "7.19" # This is the slowest where two GPUs are not directly connected via NVLink
+    os.environ["FMOE_FASTER_GLBPLC_ALPHA"] = "4" # 3072 / 768
+    os.environ["FMOE_FASTER_GLBPLC_DMODEL"] = "768"
 
     torch.cuda.set_device(rank)
 
