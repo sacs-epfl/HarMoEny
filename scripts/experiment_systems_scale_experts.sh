@@ -1,207 +1,55 @@
 num_samples=800000
 output_path="data/systems/experts/$(date +"%Y-%m-%d_%H-%M")"
+experts=(8 16 32 64 128)
+dataset=wikitext
+seq_len=120
+num_gpus=8
 
 cd ..
-########## 8 ############
-python3 src/start_harmony.py \
-    --dataset wikitext \
-    --num_samples $num_samples \
-    --batch_size 5000 \
-    --seq_len 60 \
-    --model_name "google/switch-base-8" \
-    --scheduling_policy "harmony" \
-    --expert_cache_size 1 \
-    --world_size 8 \
-    --pa "$output_path/8/harmony"
+for e in ${experts[@]}; do 
+    python3 src/start_harmony.py \
+        --dataset $dataset \
+        --num_samples $num_samples \
+        --seq_len $seq_len \
+        --model_name "google/switch-base-$e" \
+        --scheduling_policy "harmony" \
+        --expert_cache_size $(($e / $num_gpus)) \
+        --world_size $num_gpus \
+        --pa "$output_path/$e/harmony"
 
-python3 src/start_harmony.py \
-    --dataset wikitext \
-    --num_samples $num_samples \
-    --batch_size 2250 \
-    --seq_len 60 \
-    --model_name "google/switch-base-8" \
-    --scheduling_policy "exflow" \
-    --expert_cache_size 1 \
-    --world_size 8 \
-    --expert_placement "ExFlow/placement/exp8_gpu8.json" \
-    --pa "$output_path/8/exflow"
+    python3 src/start_harmony.py \
+        --dataset $dataset \
+        --num_samples $num_samples \
+        --seq_len $seq_len \
+        --model_name "google/switch-base-$e" \
+        --scheduling_policy "exflow" \
+        --expert_cache_size $(($e / $num_gpus)) \
+        --world_size $num_gpus \
+        --expert_placement "ExFlow/placement/exp${e}_gpu${num_gpus}.json" \
+        --pa "$output_path/$e/exflow"
 
-python3 src/start_fastmoe.py \
-    --dataset wikitext \
-    --num_samples $num_samples \
-    --batch_size 2500 \
-    --seq_len 60 \
-    --num_experts 8 \
-    --world_size 8 \
-    --pa "$output_path/8/fastmoe"
+    python3 src/start_fastmoe.py \
+        --dataset $dataset \
+        --num_samples $num_samples \
+        --seq_len $seq_len \
+        --num_experts $e \
+        --world_size $num_gpus \
+        --pa "$output_path/$e/fastmoe"
 
-python3 src/start_fastermoe.py \
-    --dataset wikitext \
-    --num_samples $num_samples \
-    --batch_size 2500 \
-    --seq_len 60 \
-    --num_experts 8 \
-    --world_size 8 \
-    --pa "$output_path/8/fastermoe"
+    python3 src/start_fastermoe.py \
+        --dataset $dataset \
+        --num_samples $num_samples \
+        --seq_len $seq_len \
+        --num_experts $e \
+        --world_size $num_gpus \
+        --pa "$output_path/$e/fastermoe"
 
-deepspeed --num_gpus 8 src/start_deepspeed.py \
-    --dataset random \
-    --num_samples $num_samples \
-    --batch_size 4500 \
-    --seq_len 60 \
-    --num_experts 8 \
-    --world_size 8 \
-    --pa "$output_path/8/deepspeed"
+    deepspeed --num_gpus $num_gpus src/start_deepspeed.py \
+        --dataset $dataset \
+        --num_samples $num_samples \
+        --seq_len $seq_len \
+        --num_experts $e \
+        --world_size $num_gpus \
+        --pa "$output_path/$e/deepspeed"
+done 
 
-######## WIKITEXT ##############
-python3 src/start_harmony.py \
-    --dataset wikitext \
-    --num_samples $num_samples \
-    --batch_size 5000 \
-    --seq_len 60 \
-    --model_name "google/switch-base-128" \
-    --scheduling_policy "harmony" \
-    --expert_cache_size 16 \
-    --world_size 8 \
-    --pa "$output_path/wikitext/harmony"
-
-python3 src/start_harmony.py \
-    --dataset wikitext \
-    --num_samples $num_samples \
-    --batch_size 2250 \
-    --seq_len 60 \
-    --model_name "google/switch-base-128" \
-    --scheduling_policy "exflow" \
-    --expert_cache_size 16 \
-    --world_size 8 \
-    --expert_placement "src/exflow_placements/bookcorpus_128experts_8gpus.json" \
-    --pa "$output_path/wikitext/exflow"
-
-python3 src/start_fastmoe.py \
-    --dataset wikitext \
-    --num_samples $num_samples \
-    --batch_size 4000 \
-    --seq_len 60 \
-    --num_experts 128 \
-    --world_size 8 \
-    --pa "$output_path/wikitext/fastmoe"
-
-python3 src/start_fastermoe.py \
-    --dataset wikitext \
-    --num_samples $num_samples \
-    --batch_size 4000 \
-    --seq_len 60 \
-    --num_experts 128 \
-    --world_size 8 \
-    --pa "$output_path/wikitext/fastermoe"
-
-deepspeed --num_gpus 8 src/start_deepspeed.py \
-    --dataset wikitext \
-    --num_samples $num_samples \
-    --batch_size 5000 \
-    --seq_len 60 \
-    --num_experts 128 \
-    --world_size 8 \
-    --pa "$output_path/wikitext/deepspeed"
-
-######## BOOKCORPUS ##############
-python3 src/start_harmony.py \
-    --dataset bookcorpus \
-    --num_samples $num_samples \
-    --batch_size 5000 \
-    --seq_len 60 \
-    --model_name "google/switch-base-128" \
-    --scheduling_policy "harmony" \
-    --expert_cache_size 16 \
-    --world_size 8 \
-    --pa "$output_path/bookcorpus/harmony"
-
-python3 src/start_harmony.py \
-    --dataset bookcorpus \
-    --num_samples $num_samples \
-    --batch_size 2250 \
-    --seq_len 60 \
-    --model_name "google/switch-base-128" \
-    --scheduling_policy "exflow" \
-    --expert_cache_size 16 \
-    --world_size 8 \
-    --expert_placement "src/exflow_placements/bookcorpus_128experts_8gpus.json" \
-    --pa "$output_path/bookcorpus/exflow"
-
-python3 src/start_fastmoe.py \
-    --dataset bookcorpus \
-    --num_samples $num_samples \
-    --batch_size 4000 \
-    --seq_len 60 \
-    --num_experts 128 \
-    --world_size 8 \
-    --pa "$output_path/bookcorpus/fastmoe"
-
-python3 src/start_fastermoe.py \
-    --dataset bookcorpus \
-    --num_samples $num_samples \
-    --batch_size 4000 \
-    --seq_len 60 \
-    --num_experts 128 \
-    --world_size 8 \
-    --pa "$output_path/bookcorpus/fastermoe"
-
-deepspeed --num_gpus 8 src/start_deepspeed.py \
-    --dataset bookcorpus \
-    --num_samples $num_samples \
-    --batch_size 5000 \
-    --seq_len 60 \
-    --num_experts 128 \
-    --world_size 8 \
-    --pa "$output_path/bookcorpus/deepspeed"
-
-######## WMT19 ##############
-python3 src/start_harmony.py \
-    --dataset wmt19 \
-    --num_samples $num_samples \
-    --batch_size 5000 \
-    --seq_len 60 \
-    --model_name "google/switch-base-128" \
-    --scheduling_policy "harmony" \
-    --expert_cache_size 16 \
-    --world_size 8 \
-    --pa "$output_path/wmt19/harmony"
-
-python3 src/start_harmony.py \
-    --dataset wmt19 \
-    --num_samples $num_samples \
-    --batch_size 2250 \
-    --seq_len 60 \
-    --model_name "google/switch-base-128" \
-    --scheduling_policy "exflow" \
-    --expert_cache_size 16 \
-    --world_size 8 \
-    --expert_placement "src/exflow_placements/bookcorpus_128experts_8gpus.json" \
-    --pa "$output_path/wmt19/exflow"
-
-python3 src/start_fastmoe.py \
-    --dataset wmt19 \
-    --num_samples $num_samples \
-    --batch_size 4000 \
-    --seq_len 60 \
-    --num_experts 128 \
-    --world_size 8 \
-    --pa "$output_path/wmt19/fastmoe"
-
-python3 src/start_fastermoe.py \
-    --dataset wmt19 \
-    --num_samples $num_samples \
-    --batch_size 4000 \
-    --seq_len 60 \
-    --num_experts 128 \
-    --world_size 8 \
-    --pa "$output_path/wmt19/fastermoe"
-
-deepspeed --num_gpus 8 src/start_deepspeed.py \
-    --dataset wmt19 \
-    --num_samples $num_samples \
-    --batch_size 5000 \
-    --seq_len 60 \
-    --num_experts 128 \
-    --world_size 8 \
-    --pa "$output_path/wmt19/deepspeed"

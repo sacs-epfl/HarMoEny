@@ -8,7 +8,7 @@ import psutil
 from threading import Thread
 import sys
 import os 
-from datetime import datetime 
+from datetime import datetime, timedelta
 import time
 import csv
 import stat 
@@ -22,6 +22,7 @@ from tqdm import tqdm
 from copy import deepcopy
 import argparse
 
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from torch.utils.data import DataLoader, DistributedSampler
 from transformers import AutoTokenizer, AutoModel
 
@@ -79,57 +80,68 @@ def setup(rank):
 
     os.environ["MASTER_ADDR"] = "localhost"
     os.environ["MASTER_PORT"] = args.port
-    dist.init_process_group("nccl", rank=rank, world_size=args.world_size)
+
+    #os.environ["NCCL_ASYNC_ERROR_HANDLING"] = "2"
+    os.environ["TORCH_NCCL_ASYNC_ERROR_HANDLING"] = "2"
+    dist.init_process_group("nccl", rank=rank, world_size=args.world_size, timeout=timedelta(seconds=60))
 
     torch.cuda.set_device(rank)
 
-def check_inference_with_timeout(model, batch, timeout=60):
-    def run_inference():
-        try:
-            batch = {k: v.cuda() for k, v in batch.items()}
+def check_inference(model, batch):
+    success = True
+    try:
+        batch = {k: v.cuda() for k, v in batch.items()}
+        with torch.no_grad():
             model(**batch)
-            return True
-        except e:
-            return False
-    
-    success = False
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(run_inference)
-        try:
-            success = future.result(timeout=timeout)
-        except TimeoutError as e:
-            pass
-        finally:
-            torch.cuda.empty_cache()
-
-    return success
+    except Exception as e:
+        #print(f"Got an exception: {dist.get_rank()}")
+        #print(str(e).lower())
+        if "out of memory" in str(e).lower():
+            #print("here")
+            time.sleep(60)
+        success = False
+    finally:
+        torch.cuda.empty_cache()
+        return success
 
 def find_batch_size(model, dataset, sampler):
-    print("Finding max batch size")
     l = 1
 
     while True:
-        print(f"Checking {l}")
+        #print(f"({dist.get_rank()}) Checking: {l}")
         dataloader = DataLoader(
             dataset,
             sampler=sampler,
             batch_size=l,
         )
-        if check_inference_with_timeout(model, next(iter(dataloader))):
+        if check_inference(model, next(iter(dataloader))):
             l *= 2
         else:
             break
         
     r = l 
-    l /= 2
-    print(f"[{l}, {r})")
-    exit(0)
+    l //= 2
+
+    while l < r:
+        test = (l + r) // 2
+        #print(f"({dist.get_rank()}) Test Checking: {test}")
+
+        dataloader = DataLoader(
+            dataset,
+            sampler=sampler,
+            batch_size=test,
+        )
+        if check_inference(model, next(iter(dataloader))):
+            l = test
+        else:
+            r = test
+    
+    return int(r // (1/0.98)) # Give a minor room for unknowns
 
 def setup_initial_inference(model, batch):
-    print(batch["input_ids"].shape)
-    exit(0)
     batch = {k: v.cuda() for k, v in batch.items()}
-    model(**batch)
+    with torch.no_grad():
+        model(**batch)
 
 def run_inference_workload(rank, model):
     try:
@@ -159,17 +171,15 @@ def run_inference_workload(rank, model):
         setup_initial_inference(model, flexible_dataset.generate_random_batch_size_1())
 
         if args.batch_size is None:
-            batch_size = find_batch_size(model, flexible_dataset, sampler)
-        else:
-            batch_size = args.batch_size
+            args.batch_size = find_batch_size(model, flexible_dataset, sampler)
         
-        print(batch_size)
+        print(args.batch_size)
         exit(0)
 
         loader = DataLoader(
             flexible_dataset, 
             sampler=sampler, 
-            batch_size=batch_size,
+            batch_size=args.batch_size,
         )
 
         path = f"{args.path}/{rank}"
@@ -317,3 +327,42 @@ if __name__ == "__main__":
     print("All done :)")
 
     pynvml.nvmlShutdown()
+
+
+
+def check_inference_with_timeout(model, batch, timeout=60):
+    def run_inference(model, batch, return_dict):
+        success = True
+        try:            
+            model(**batch)
+        except Exception as exp:
+            success = False 
+        finally:
+            torch.cuda.empty_cache()
+            return_dict["success"] = success
+    
+    return_dict = {}
+    batch = {k: v.cuda() for k, v in batch.items()}
+    t = Thread(target=run_inference, args=(model, batch, return_dict))
+    t.start()
+    t.join(120)
+    if t.is_alive():
+        print("NEED TO DO SOMETHING HERE")
+        # p.terminate()
+        # p.join()
+        success = False
+    else:
+        success = return_dict.get("success", False)
+    return success
+
+    # success = False
+    # with ThreadPoolExecutor(max_workers=1) as executor:
+    #     future = executor.submit(run_inference, model, batch, dist.get_rank())
+    #     try:
+    #         success = future.result(timeout=timeout)
+    #     except TimeoutError:
+    #         print("Timed out")
+    #     finally:
+    #         torch.cuda.empty_cache()
+
+    # return success
