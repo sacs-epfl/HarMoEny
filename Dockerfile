@@ -22,6 +22,8 @@ RUN pip install \
     transformers==4.46.0  \
     deepspeed==0.15.3 
 
+RUN python3 -m pip install gurobipy==12.0.0
+
 RUN pip install -U kaleido==0.2.1
 RUN python3 -m pip install -v -U --no-build-isolation git+https://github.com/microsoft/tutel@c7559e8
 

@@ -49,47 +49,18 @@ class FlexibleDataset(Dataset):
             text = "translate English to German: " + self.dataset[idx]["translation"]["en"]
         elif self.dataset_option == "random":
             return self._generate_random_entry()
-            # encoder = ["summarize:"]
-            # vocab_size = self.tokenizer.vocab_size
-
-            # for _ in range(self.max_length):
-            #     # Add a random token to the array
-            #     random_token_id = random.randint(0, vocab_size-1)
-            #     random_token = self.tokenizer.decode(random_token_id)
-            #     encoder.append(random_token)
-
-            # encoder = " ".join(encoder)
-
-        # encoder_tokenized = self.tokenizer(encoder, padding="max_length", truncation=True, max_length=self.max_length, return_tensors="pt")
-        
-        # dic = {
-        #     "input_ids": encoder_tokenized["input_ids"].squeeze(0),
-        #     "attention_mask": encoder_tokenized["attention_mask"].squeeze(0),
-        #     "decoder_input_ids": torch.tensor([self.tokenizer.pad_token_id])
-        # }
 
         tokenized_text = self.tokenizer.encode(text, truncation=True, max_length=self.max_length, return_tensors="pt")
         if tokenized_text.size(1) < self.max_length:
             # If the length is less than seq_len, generate random tokens to fill it
-            #random_tokens = []
-            #vocab_size = self.tokenizer.vocab_size
             tokens_needed = self.max_length - tokenized_text.size(1)
 
             random_locations = torch.randint(0, tokenized_text.shape[1], (tokens_needed,))
-            #print(random_locations.shape)
             random_tokens = tokenized_text[0][random_locations].unsqueeze(0)
-          
-            #random_token_ids = self.tokenizer.convert_tokens_to_ids(random_tokens)
-
-            # for _ in range(tokens_needed):
-            #     random_token_id = random.randint(0, vocab_size - 1)
-            #     random_tokens.append(random_token_id)
 
             # Concatenate original tokens with random tokens
             before_len = tokenized_text.size(1)
-            #tokenized_text = torch.cat([tokenized_text, torch.tensor(random_tokens).unsqueeze(0)], dim=1)
             tokenized_text = torch.cat([tokenized_text, random_tokens], dim=1)
-            #print(f"before:{before_len} after:{tokenized_text.size(1)}")
 
         # If the length exceeds max_length, truncate
         if tokenized_text.size(1) > self.max_length:
@@ -102,35 +73,11 @@ class FlexibleDataset(Dataset):
             "decoder_input_ids": torch.tensor([self.tokenizer.pad_token_id])
         }
 
-        # print(f"input_ids: {encoder_tokenized['input_ids'].shape} {encoder_tokenized['input_ids'].dtype}")
-        # print(f"attention_mask: {encoder_tokenized['attention_mask'].shape} {encoder_tokenized['attention_mask'].dtype}")
-        # print(f"decoder_input_ids: {encoder_tokenized['decoder_input_ids'].shape} {encoder_tokenized['decoder_input_ids'].dtype}")
-
         return encoder_tokenized
     
     def _generate_random_entry(self):
-        # encoder = ["summarize:"]
-        # text_encoded = self.tokenizer(encoder, return_tensors="pt")
 
         text_encoded = torch.randint(0, self.tokenizer.vocab_size, (self.max_length,))
-
-        # rand = []
-
-        # vocab_size = self.tokenizer.vocab_size
-        # for _ in range(self.max_length):
-        #     random_token_id = random.randint(0, vocab_size - 1)
-        #     rand.append(random_token_id)
-
-        # vocab_size = self.tokenizer.vocab_size
-
-        # for _ in range(self.max_length):
-        #     # Add a random token to the array
-        #     random_token_id = random.randint(0, vocab_size - 1)
-        #     random_token = self.tokenizer.decode(random_token_id)
-        #     encoder.append(random_token)
-
-        # encoder = " ".join(encoder)
-        # encoder_tokenized = self.tokenizer(encoder, padding="max_length", truncation=True, max_length=self.max_length, return_tensors="pt")
 
         encoder_tokenized = {
             "input_ids": text_encoded,
@@ -138,8 +85,12 @@ class FlexibleDataset(Dataset):
             "decoder_input_ids": torch.tensor([self.tokenizer.pad_token_id])
         }
 
-        # print(f"input_ids: {encoder_tokenized['input_ids'].shape} {encoder_tokenized['input_ids'].dtype}")
-        # print(f"attention_mask: {encoder_tokenized['attention_mask'].shape} {encoder_tokenized['attention_mask'].dtype}")
-        # print(f"decoder_input_ids: {encoder_tokenized['decoder_input_ids'].shape} {encoder_tokenized['decoder_input_ids'].dtype}")
-
         return encoder_tokenized
+    
+    def generate_random_batch_size_1(self):
+        entry = self._generate_random_entry()
+        return {
+            "input_ids": torch.tensor([entry["input_ids"].tolist()]),
+            "attention_mask": torch.tensor([entry["attention_mask"].tolist()]),
+            "decoder_input_ids": torch.tensor([entry["decoder_input_ids"].tolist()]),
+        }

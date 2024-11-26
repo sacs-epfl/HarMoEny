@@ -186,12 +186,10 @@ def run_inference_workload():
 def run_standard_experiment(ds_engine, loader):
     latencies = []
     
-    print("hello")
     with torch.no_grad():
         # WARMUP
         itr = 0
         for batch in loader:
-            print(itr)
             batch = {k: v.cuda() for k, v in batch.items()}
             ds_engine(
                 input_ids=batch["input_ids"], 

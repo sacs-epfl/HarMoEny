@@ -20,17 +20,35 @@ import math
 import random
 from tqdm import tqdm
 from copy import deepcopy
+import argparse
 
 from torch.utils.data import DataLoader, DistributedSampler
 from transformers import AutoTokenizer, AutoModel
 
 from flexible_dataset import FlexibleDataset
-from parser import ArgParse
 
 from harmonymoe.utils import replace_moe_layer, get_moe_experts, get_moe_layers
 from harmonymoe.moe_layer import MoEConfig, MoELayer
 
-parser = ArgParse()
+def str2bool(s):
+        return s.lower() in ["yes", "y", "true", "t"]
+
+parser = argparse.ArgumentParser(
+    prog="MoE workload generator",
+    description="Spawns MoE model across GPUs and e2e iteration times",
+)
+parser.add_argument("--dataset", default="sst2", type=str)
+parser.add_argument("--num_samples", default=0, type=int, help="Number of total samples across all GPUs")
+parser.add_argument("--batch_size", default=None, type=int, help="Batch size per GPU")
+parser.add_argument("--seq_len", default=120, type=int)
+parser.add_argument("--model_name", default="google/switch-base-64", type=str, help="Huggingface model")
+parser.add_argument("--type_moe_parent", default="SwitchTransformersLayerFF", type=str, help="class name of model MoE Layer parent")
+parser.add_argument("--type_moe", default="SwitchTransformersSparseMLP", type=str, help="class name of model MoE Layers")
+parser.add_argument("--name_router", default="router", type=str, help="parameter name of router on MoE")
+parser.add_argument("--name_experts", default="experts", type=str, help="parameter name of router on MoE")
+parser.add_argument("--name_decoder", default="decoder", type=str, help="module name of model decoder")
+parser.add_argument("--dynamic_components", default=["wi", "wo"], type=list, help="parameter names of expert changing weights")
+parser.add_argument("--d_model", default=768, type=int, help="Dimension of model hidden states")
 parser.add_argument("--scheduling_policy", default="deepspeed", type=str)
 parser.add_argument("--cache_policy", default="RAND", type=str)
 parser.add_argument("--expert_cache_size", default=2, type=int)
@@ -39,8 +57,8 @@ parser.add_argument("--world_size", default=torch.cuda.device_count(), type=int)
 parser.add_argument("--port", default="1234", type=str)
 parser.add_argument("--warmup_rounds", default=3, type=int)
 parser.add_argument("--path", default="outputs/harmony", type=str)
-args = parser.parse_arguments()
-
+parser.add_argument("--expert_placement", default=None, type=str)
+args = parser.parse_args()
 
 ############# GLOBAL AFFAIRS ################
 pynvml.nvmlInit()
@@ -64,6 +82,54 @@ def setup(rank):
     dist.init_process_group("nccl", rank=rank, world_size=args.world_size)
 
     torch.cuda.set_device(rank)
+
+def check_inference_with_timeout(model, batch, timeout=60):
+    def run_inference():
+        try:
+            batch = {k: v.cuda() for k, v in batch.items()}
+            model(**batch)
+            return True
+        except e:
+            return False
+    
+    success = False
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(run_inference)
+        try:
+            success = future.result(timeout=timeout)
+        except TimeoutError as e:
+            pass
+        finally:
+            torch.cuda.empty_cache()
+
+    return success
+
+def find_batch_size(model, dataset, sampler):
+    print("Finding max batch size")
+    l = 1
+
+    while True:
+        print(f"Checking {l}")
+        dataloader = DataLoader(
+            dataset,
+            sampler=sampler,
+            batch_size=l,
+        )
+        if check_inference_with_timeout(model, next(iter(dataloader))):
+            l *= 2
+        else:
+            break
+        
+    r = l 
+    l /= 2
+    print(f"[{l}, {r})")
+    exit(0)
+
+def setup_initial_inference(model, batch):
+    print(batch["input_ids"].shape)
+    exit(0)
+    batch = {k: v.cuda() for k, v in batch.items()}
+    model(**batch)
 
 def run_inference_workload(rank, model):
     try:
@@ -89,10 +155,21 @@ def run_inference_workload(rank, model):
             shuffle=True, 
             seed=49
         )
+
+        setup_initial_inference(model, flexible_dataset.generate_random_batch_size_1())
+
+        if args.batch_size is None:
+            batch_size = find_batch_size(model, flexible_dataset, sampler)
+        else:
+            batch_size = args.batch_size
+        
+        print(batch_size)
+        exit(0)
+
         loader = DataLoader(
             flexible_dataset, 
             sampler=sampler, 
-            batch_size=args.batch_size
+            batch_size=batch_size,
         )
 
         path = f"{args.path}/{rank}"
@@ -205,6 +282,7 @@ if __name__ == "__main__":
         eq_tokens=args.eq_tokens,
         d_model=args.d_model,
         world_size=args.world_size,
+        expert_placement=args.expert_placement,
     )
     replace_moe_layer(
         model, 

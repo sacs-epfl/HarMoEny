@@ -18,6 +18,7 @@ class MoEConfig:
     eq_tokens: int = 150
     d_model: int = 768
     world_size: int = 1
+    expert_placement: list = None
 
 class MoELayer(nn.Module):
     def __init__(self, router, experts, config=MoEConfig):
@@ -47,6 +48,8 @@ class MoELayer(nn.Module):
             eq_tokens=config.eq_tokens,
             d_model=config.d_model,
             num_gpus=self.num_gpus,
+            expert_placement=config.expert_placement,
+            layer_idx=self.layer_idx,
         )
 
         self.expert_manager = ExpertManager(
