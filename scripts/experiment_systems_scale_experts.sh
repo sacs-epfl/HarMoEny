@@ -14,6 +14,7 @@ for e in ${experts[@]}; do
         --model_name "google/switch-base-$e" \
         --scheduling_policy "harmony" \
         --expert_cache_size $(($e / $num_gpus)) \
+        --start_batch_size 2500 \
         --world_size $num_gpus \
         --pa "$output_path/$e/harmony"
 
@@ -24,6 +25,7 @@ for e in ${experts[@]}; do
         --model_name "google/switch-base-$e" \
         --scheduling_policy "exflow" \
         --expert_cache_size $(($e / $num_gpus)) \
+        --start_batch_size 2240 \
         --world_size $num_gpus \
         --expert_placement "ExFlow/placement/exp${e}_gpu${num_gpus}.json" \
         --pa "$output_path/$e/exflow"

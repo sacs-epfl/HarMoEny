@@ -41,6 +41,7 @@ parser = argparse.ArgumentParser(
 parser.add_argument("--dataset", default="sst2", type=str)
 parser.add_argument("--num_samples", default=0, type=int, help="Number of total samples across all GPUs")
 parser.add_argument("--batch_size", default=None, type=int, help="Batch size per GPU")
+parser.add_argument("--start_batch_size", default=1, type=int)
 parser.add_argument("--seq_len", default=120, type=int)
 parser.add_argument("--model_name", default="google/switch-base-64", type=str, help="Huggingface model")
 parser.add_argument("--type_moe_parent", default="SwitchTransformersLayerFF", type=str, help="class name of model MoE Layer parent")
@@ -73,7 +74,7 @@ def get_size(obj):
     torch.cuda.synchronize()
     return memory_allocated
 
-def setup(rank):
+def setup(rank, timeout=timedelta(minutes=30)):
     os.environ["HF_HOME"] = "/cache"
     os.environ["HF_DATASETS_CACHE"] = "/cache"
     os.environ["TRITON_HOME"] = "/.triton"
@@ -81,57 +82,55 @@ def setup(rank):
     os.environ["MASTER_ADDR"] = "localhost"
     os.environ["MASTER_PORT"] = args.port
 
-    os.environ["TORCH_NCCL_ASYNC_ERROR_HANDLING"] = "2"
-    os.environ["NCCL_DEBUG"] = "INFO"
-    dist.init_process_group("nccl", rank=rank, world_size=args.world_size, timeout=timedelta(seconds=60))
+    dist.init_process_group("nccl", rank=rank, world_size=args.world_size, timeout=timeout)
 
     torch.cuda.set_device(rank)
 
-def check_inference(model, batch):
-    try:
-        batch = {k: v.cuda() for k, v in batch.items()}
-        with torch.no_grad():
-            model(**batch)
-        success = True
-    except Exception as e:
-        success = False
-        if "out of memory" in str(e).lower():
-            print(f"[rank:{dist.get_rank()}] OOM detected. Reducing batch size...")
-            torch.cuda.empty_cache()
-            time.sleep(60)  # Allow other ranks to recover
+# def check_inference(model, batch):
+#     try:
+#         batch = {k: v.cuda() for k, v in batch.items()}
+#         with torch.no_grad():
+#             model(**batch)
+#         success = True
+#     except Exception as e:
+#         success = False
+#         if "out of memory" in str(e).lower():
+#             print(f"[rank:{dist.get_rank()}] OOM detected. Reducing batch size...")
+#             torch.cuda.empty_cache()
+#             time.sleep(60)  # Allow other ranks to recover
             
-        else:
-            print(f"[rank:{dist.get_rank()}] Error: {e}")
+#         else:
+#             print(f"[rank:{dist.get_rank()}] Error: {e}")
         
-        # Attempt recovery
-        try:
-            rank = dist.get_rank()
-            world_size = dist.get_world_size()
-            print(f"[rank:{rank}] Resetting process group...")
-            dist.destroy_process_group()
-            dist.init_process_group(
-                backend="nccl", 
-                init_method="env://", 
-                rank=rank, 
-                world_size=world_size, 
-                timeout=timedelta(seconds=60),
-            )
-            torch.cuda.empty_cache()
-        except Exception as recover_e:
-            print(f"[rank:{rank}] Failed to recover: {recover_e}")
-            # Exit this rank to allow the job to restart cleanly
-            os._exit(1)
-    finally:
-        # Attempt to synchronize all ranks, but handle failure gracefully
-        try:
-            print(f"[rank:{dist.get_rank()}] Reaching barrier...")
-            dist.barrier()
-            print(f"[rank:{dist.get_rank()}] Passed barrier.")
-        except Exception as barrier_e:
-            print(f"[rank:{dist.get_rank()}] Failed at barrier: {barrier_e}")
-            os._exit(1)  # Force exit if synchronization is broken
+#         # Attempt recovery
+#         try:
+#             rank = dist.get_rank()
+#             world_size = dist.get_world_size()
+#             print(f"[rank:{rank}] Resetting process group...")
+#             dist.destroy_process_group()
+#             dist.init_process_group(
+#                 backend="nccl", 
+#                 init_method="env://", 
+#                 rank=rank, 
+#                 world_size=world_size, 
+#                 timeout=timedelta(seconds=60),
+#             )
+#             torch.cuda.empty_cache()
+#         except Exception as recover_e:
+#             print(f"[rank:{rank}] Failed to recover: {recover_e}")
+#             # Exit this rank to allow the job to restart cleanly
+#             os._exit(1)
+#     finally:
+#         # Attempt to synchronize all ranks, but handle failure gracefully
+#         try:
+#             print(f"[rank:{dist.get_rank()}] Reaching barrier...")
+#             dist.barrier()
+#             print(f"[rank:{dist.get_rank()}] Passed barrier.")
+#         except Exception as barrier_e:
+#             print(f"[rank:{dist.get_rank()}] Failed at barrier: {barrier_e}")
+#             os._exit(1)  # Force exit if synchronization is broken
 
-        return success
+#         return success
 
 # def check_inference(model, batch):
 #     try:
@@ -171,47 +170,105 @@ def check_inference(model, batch):
 
 #         return success
 
-def find_batch_size(model, dataset, sampler):
-    l = 1
+# def find_batch_size(model, dataset, sampler):
+#     l = 1
+
+#     while True:
+#         print(f"Checking: {l}")
+#         dataloader = DataLoader(
+#             dataset,
+#             sampler=sampler,
+#             batch_size=l,
+#         )
+#         if check_inference(model, next(iter(dataloader))):
+#             l *= 2
+#         else:
+#             break
+        
+#     r = l 
+#     l //= 2
+
+#     while l < r:
+#         test = (l + r) // 2
+#         print(f"Final checking: {test}")
+
+#         dataloader = DataLoader(
+#             dataset,
+#             sampler=sampler,
+#             batch_size=test,
+#         )
+#         if check_inference(model, next(iter(dataloader))):
+#             l = test
+#         else:
+#             r = test
+    
+#     return int(r // (1/0.98)) # Give a minor room for unknowns
+
+
+def check_inference(model, batch):
+    try:
+        batch = {k: v.cuda() for k, v in batch.items()}
+        with torch.no_grad():
+            model(**batch)
+        success = True
+        print("SUCCESS")
+    except Exception as e:
+        success = False
+        print("FAIL")
+    finally:
+        torch.cuda.empty_cache()
+        return success
+
+def compute_batch_size(model, dataset, sampler):
+    batch = args.start_batch_size
+    incr = 20
 
     while True:
-        print(f"Checking: {l}")
-        dataloader = DataLoader(
-            dataset,
-            sampler=sampler,
-            batch_size=l,
-        )
-        if check_inference(model, next(iter(dataloader))):
-            l *= 2
-        else:
-            break
-        
-    r = l 
-    l //= 2
-
-    while l < r:
-        test = (l + r) // 2
-        print(f"Final checking: {test}")
-
+        test = batch + incr
+        print(f"TESTING {test}")
         dataloader = DataLoader(
             dataset,
             sampler=sampler,
             batch_size=test,
         )
         if check_inference(model, next(iter(dataloader))):
-            l = test
+            batch = test
         else:
-            r = test
-    
-    return int(r // (1/0.98)) # Give a minor room for unknowns
+            return batch
 
-def setup_initial_inference(model, batch):
-    batch = {k: v.cuda() for k, v in batch.items()}
-    with torch.no_grad():
-        model(**batch)
+def find_batch_size(rank, model, batch_sizes):
+    mp.current_process().name = f'Worker-{rank}'
+    setup(rank, timeout=timedelta(seconds=60))
+    os.environ["TORCH_NCCL_ASYNC_ERROR_HANDLING"] = "2"
 
-def run_inference_workload(rank, model):
+    model.cuda()
+    model.eval()
+
+    tokenizer = AutoTokenizer.from_pretrained(args.model_name, cache_dir="/cache")
+
+    flexible_dataset = FlexibleDataset(
+        args.dataset, 
+        tokenizer, 
+        model, 
+        seq_len=args.seq_len,
+        num_samples=args.num_samples
+    )
+    sampler = DistributedSampler(
+        flexible_dataset, 
+        num_replicas=dist.get_world_size(), 
+        rank=rank, 
+        shuffle=True, 
+        seed=49
+    )
+
+    max_batch_size = compute_batch_size(model, flexible_dataset, sampler)
+    print(f"THE MAX: {max_batch_size}")
+    batch_sizes.append(max_batch_size)
+
+def run_inference_workload(rank, model, batch=args.batch_size):
     try:
+        args.batch_size = batch
+
         mp.current_process().name = f'Worker-{rank}'
         setup(rank)
 
@@ -225,7 +282,7 @@ def run_inference_workload(rank, model):
             tokenizer, 
             model, 
             seq_len=args.seq_len,
-            num_samples=args.num_samples if args.num_samples != 0 else args.num_iters * args.batch_size * args.world_size
+            num_samples=args.num_samples
         )
         sampler = DistributedSampler(
             flexible_dataset, 
@@ -235,23 +292,10 @@ def run_inference_workload(rank, model):
             seed=49
         )
 
-        setup_initial_inference(model, flexible_dataset.generate_random_batch_size_1())
-
-        if args.batch_size is None:
-            args.batch_size = find_batch_size(model, flexible_dataset, sampler)
-        
-        print(f"[rank={rank}] Setting batch size to {args.batch_size}")
-        exit(0)
-        dist.barrier()
-        print("BEGIN")
-
-        for r in dist.get_world_size():
-            torch.cuda.synchronize(device=r)
-
         loader = DataLoader(
             flexible_dataset, 
             sampler=sampler, 
-            batch_size=args.batch_size,
+            batch_size=batch,
         )
 
         path = f"{args.path}/{rank}"
@@ -374,6 +418,23 @@ if __name__ == "__main__":
         experts,
         config,
     )
+    
+    if args.batch_size == None:
+        manager = mp.Manager()
+        batch_sizes = manager.list()
+
+        processes = []
+        mp.set_start_method("spawn", force=True)
+        for i in range(args.world_size):
+            p = mp.Process(target=find_batch_size, args=(i, model, batch_sizes))
+            p.start()
+            processes.append(p)
+        for p in processes:
+            p.join()
+
+        args.batch_size = min(batch_sizes)
+
+    print(f"NEW BATCH SIZE: {args.batch_size}")
 
     metrics = []
     stop_event = mp.Event()
@@ -382,9 +443,9 @@ if __name__ == "__main__":
     metric_thread.start()
 
     processes = []
-    mp.set_start_method('spawn', force=True)
+    mp.set_start_method("spawn", force=True)
     for i in range(args.world_size):
-        p = mp.Process(target=run_inference_workload, args=(i, model))
+        p = mp.Process(target=run_inference_workload, args=(i, model), kwargs=dict(batch=args.batch_size))
         p.start()
         processes.append(p)
     for p in processes:
