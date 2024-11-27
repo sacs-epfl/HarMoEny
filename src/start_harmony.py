@@ -86,125 +86,6 @@ def setup(rank, timeout=timedelta(minutes=30)):
 
     torch.cuda.set_device(rank)
 
-# def check_inference(model, batch):
-#     try:
-#         batch = {k: v.cuda() for k, v in batch.items()}
-#         with torch.no_grad():
-#             model(**batch)
-#         success = True
-#     except Exception as e:
-#         success = False
-#         if "out of memory" in str(e).lower():
-#             print(f"[rank:{dist.get_rank()}] OOM detected. Reducing batch size...")
-#             torch.cuda.empty_cache()
-#             time.sleep(60)  # Allow other ranks to recover
-            
-#         else:
-#             print(f"[rank:{dist.get_rank()}] Error: {e}")
-        
-#         # Attempt recovery
-#         try:
-#             rank = dist.get_rank()
-#             world_size = dist.get_world_size()
-#             print(f"[rank:{rank}] Resetting process group...")
-#             dist.destroy_process_group()
-#             dist.init_process_group(
-#                 backend="nccl", 
-#                 init_method="env://", 
-#                 rank=rank, 
-#                 world_size=world_size, 
-#                 timeout=timedelta(seconds=60),
-#             )
-#             torch.cuda.empty_cache()
-#         except Exception as recover_e:
-#             print(f"[rank:{rank}] Failed to recover: {recover_e}")
-#             # Exit this rank to allow the job to restart cleanly
-#             os._exit(1)
-#     finally:
-#         # Attempt to synchronize all ranks, but handle failure gracefully
-#         try:
-#             print(f"[rank:{dist.get_rank()}] Reaching barrier...")
-#             dist.barrier()
-#             print(f"[rank:{dist.get_rank()}] Passed barrier.")
-#         except Exception as barrier_e:
-#             print(f"[rank:{dist.get_rank()}] Failed at barrier: {barrier_e}")
-#             os._exit(1)  # Force exit if synchronization is broken
-
-#         return success
-
-# def check_inference(model, batch):
-#     try:
-#         batch = {k: v.cuda() for k, v in batch.items()}
-#         with torch.no_grad():
-#             model(**batch)
-#         success = True 
-#     except Exception as e:
-#         if "out of memory" in str(e).lower():
-#             time.sleep(60)
-#         print(f"[rank:{dist.get_rank()}] has failed due to somekind of error")
-#         torch.cuda.empty_cache()
-
-#         success = False
-#         rank = dist.get_rank()
-#         world_size = dist.get_world_size()
-#         dist.destroy_process_group()
-#         dist.init_process_group("nccl", rank=rank, world_size=world_size, timeout=timedelta(seconds=60))
-#     finally:
-#         print(f"[rank:{dist.get_rank()}] here")
-#         #try:
-#         dist.barrier()
-#         print(f"[rank:{dist.get_rank()}] here2")
-
-#         # except Exception:
-#         #     pass
-
-#         # if not success:
-#         #     print(f"[Rank {rank}] Reinitializing NCCL communicator...")
-#         #     dist.destroy_process_group()
-#         #     dist.init_process_group(
-#         #         backend="nccl",
-#         #         rank=rank,
-#         #         world_size=world_size,
-#         #         timeout=timedelta(seconds=60),
-#         #     )
-
-#         return success
-
-# def find_batch_size(model, dataset, sampler):
-#     l = 1
-
-#     while True:
-#         print(f"Checking: {l}")
-#         dataloader = DataLoader(
-#             dataset,
-#             sampler=sampler,
-#             batch_size=l,
-#         )
-#         if check_inference(model, next(iter(dataloader))):
-#             l *= 2
-#         else:
-#             break
-        
-#     r = l 
-#     l //= 2
-
-#     while l < r:
-#         test = (l + r) // 2
-#         print(f"Final checking: {test}")
-
-#         dataloader = DataLoader(
-#             dataset,
-#             sampler=sampler,
-#             batch_size=test,
-#         )
-#         if check_inference(model, next(iter(dataloader))):
-#             l = test
-#         else:
-#             r = test
-    
-#     return int(r // (1/0.98)) # Give a minor room for unknowns
-
-
 def check_inference(model, batch):
     try:
         batch = {k: v.cuda() for k, v in batch.items()}
@@ -213,6 +94,7 @@ def check_inference(model, batch):
         success = True
         print("SUCCESS")
     except Exception as e:
+        print(f"/////////////BIG ERROR: {str(e)}")
         success = False
         print("FAIL")
     finally:
@@ -240,6 +122,8 @@ def find_batch_size(rank, model, batch_sizes):
     mp.current_process().name = f'Worker-{rank}'
     setup(rank, timeout=timedelta(seconds=60))
     os.environ["TORCH_NCCL_ASYNC_ERROR_HANDLING"] = "2"
+    os.environ["NCCL_ASYNC_ERROR_HANDLING"] = "2"
+    #os.environ["TORCH_NCCL_DUMP_ON_TIMEOUT"] = "0"
 
     model.cuda()
     model.eval()

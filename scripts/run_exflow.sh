@@ -15,5 +15,5 @@ python3 src/start_harmony.py \
     --expert_cache_size $(($e / $num_gpus)) \
     --world_size $num_gpus \
     --expert_placement "ExFlow/placement/exp${e}_gpu${num_gpus}.json" \
-    --start_batch_size 2240 \
+    --start_batch_size 2380 \
     --pa "$output_path/$e/exflow"

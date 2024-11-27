@@ -17,6 +17,7 @@ import pandas as pd
 import signal
 from tqdm import tqdm
 from copy import deepcopy
+from datetime import timedelta
 
 from torch.utils.data import DataLoader, DistributedSampler
 from transformers import AutoTokenizer, AutoModel
@@ -25,6 +26,7 @@ from flexible_dataset import FlexibleDataset
 import argparse 
 
 from fmoe.layers import FMoE
+from fmoe.gates import SwitchGate
 from utils import TimedModule, get_timing_modules
 
 parser = argparse.ArgumentParser(
@@ -53,7 +55,11 @@ def setup(rank):
 
     os.environ["MASTER_ADDR"] = "localhost"
     os.environ["MASTER_PORT"] = args.port
-    dist.init_process_group("nccl", rank=rank, world_size=args.world_size)
+
+    os.environ["FMOE_FASTER_SCHEDULE_ENABLE"] = "0"
+    os.environ["FMOE_FASTER_SHADOW_ENABLE"] = "0"
+
+    dist.init_process_group("nccl", rank=rank, world_size=args.world_size, timeout=timedelta(seconds=60))
 
     torch.cuda.set_device(rank)
 
@@ -61,8 +67,6 @@ def run_inference_workload(rank):
     try:
         mp.current_process().name = f'Worker-{rank}'
         setup(rank)
-
-        moe_group = dist.new_group(ranks=list(range(args.world_size)))
 
         model_name = f"google/switch-base-{args.num_experts}"
         model = AutoModel.from_pretrained(model_name, cache_dir="/cache")
@@ -86,6 +90,18 @@ def run_inference_workload(rank):
                 output = self.child(x)  # FMoE expects input of shape [tokens, d_model]
                 output = output.reshape(batch_size, seq_len, d_model)
                 return output
+        
+        class RouterWrapper(nn.Module):
+            def __init__(self, router):
+                super().__init__()
+                self.router = router
+
+            def forward(self, x):
+                print(f"Before: {x.shape}")
+                x = self.router(x)
+                print(f"After: {x[0].shape}")
+                print(f"[rank:{dist.get_rank()}] {torch.bincount(x[0].view(-1).cpu()).view(-1, args.num_experts // args.world_size).sum(dim=1)}")
+                return x
 
         # Update to add FMoE to it
         def add_fmoe_model(module, idx):
@@ -107,11 +123,16 @@ def run_inference_workload(rank):
                             world_size=args.world_size,
                             top_k=1,
                             expert=[lambda _, e=e: ExpertWrapper(e) for e in experts],
-                            moe_group=moe_group,
+                            #gate=SwitchGate,
                         )
 
+                        #new.gate.capacity = (10.0, 10.0)
                         with torch.no_grad():
                             new.gate.gate.weight.copy_(router.classifier.weight)
+
+                        new.gate = RouterWrapper(new.gate)
+                        # print(new.gate.capacity)
+                        # exit(0)
                         
                         setattr(module, child_name, TimedModule(FMoEWrapper(new), idx=idx[0]))
                         idx[0] += 1
