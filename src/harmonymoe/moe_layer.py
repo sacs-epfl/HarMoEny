@@ -36,7 +36,7 @@ class MoELayer(nn.Module):
         self.tot_num_toks_send = []
         self.tot_num_toks_recv = []
         self.latencies = []
-
+        self.metadata_comm_latencies = []
         self.computation_latencies = []
 
         self.expert_freqs = []
@@ -80,6 +80,7 @@ class MoELayer(nn.Module):
         for i in range(len(self.tot_num_toks_send)):
             stats.append({
                 "latency (ms)": self.latencies[i],
+                "metadata latency (ms)": self.metadata_comm_latencies[i],
                 "comp latency (ms)": self.computation_latencies[i],
                 "total number of tokens sent": self.tot_num_toks_send[i],
                 "total number of tokens recv": self.tot_num_toks_recv[i],
@@ -116,11 +117,43 @@ class MoELayer(nn.Module):
             tot += size
         self.tot_num_toks_send.append(tot)
         
-        metadata_send = [torch.tensor(num_toks_per_expert, dtype=torch.int, device="cuda") for _ in range(self.num_gpus)]
-        metadata_recv = [torch.zeros(self.num_experts, dtype=torch.int, device="cuda") for _ in range(self.num_gpus)]
+        # metadata_send = [torch.tensor(num_toks_per_expert, dtype=torch.int, device="cuda") for _ in range(self.num_gpus)]
+        # metadata_recv = [torch.zeros(self.num_experts, dtype=torch.int, device="cuda") for _ in range(self.num_gpus)]
 
-        # Metadata all_to_all
-        dist.all_to_all(metadata_recv, metadata_send)
+        # # Metadata all_to_all
+        # start = torch.cuda.Event(enable_timing=True)
+        # end = torch.cuda.Event(enable_timing=True)
+        # start.record()
+        # dist.all_to_all(metadata_recv, metadata_send)
+        # end.record()
+        # end.synchronize()
+        # self.metadata_comm_latencies.append(start.elapsed_time(end))
+
+        # metadata_send = torch.tensor(num_toks_per_expert, dtype=torch.int, device="cuda")
+        # metadata_recv = [torch.zeros(self.num_experts, dtype=torch.int, device="cuda") for _ in range(self.num_gpus)]
+
+        # # Metadata all_gather
+        # start = torch.cuda.Event(enable_timing=True)
+        # end = torch.cuda.Event(enable_timing=True)
+        # start.record()
+        # dist.all_gather(metadata_recv, metadata_send)
+        # end.record()
+        # end.synchronize()
+        # self.metadata_comm_latencies.append(start.elapsed_time(end))
+
+        metadata_send = torch.tensor([num_toks_per_expert] * self.num_gpus, dtype=torch.int, device="cuda")
+        metadata_recv = torch.zeros((self.num_gpus, self.num_experts), dtype=torch.int, device="cuda")
+
+        # Metadata all_to_all_single
+        start = torch.cuda.Event(enable_timing=True)
+        end = torch.cuda.Event(enable_timing=True)
+        start.record()
+        dist.all_to_all_single(metadata_recv, metadata_send)
+        end.record()
+        end.synchronize()
+        self.metadata_comm_latencies.append(start.elapsed_time(end))
+
+
 
         # Create global schedule
         schedule = self.scheduler(metadata_recv, self.expert_manager.get_cached())

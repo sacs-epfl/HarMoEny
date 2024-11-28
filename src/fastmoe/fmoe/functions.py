@@ -8,7 +8,7 @@ import torch
 from torch.autograd import Function
 import fmoe_cuda
 from .utils import get_torch_default_comm
-
+import torch.distributed as dist
 
 _moe_group = None
 
@@ -116,6 +116,7 @@ class MOEScatter(Function):
                 fwd_batch_size,
                 world_size,
             )
+            print(f"[rank:{dist.get_rank()}_token_receipt] {global_input_buf.shape}")
         else:
             global_input_buf = local_input_buf
         ctx.moe_args = inp.shape[0], pos.shape[0], world_size

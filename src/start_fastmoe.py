@@ -26,7 +26,9 @@ from flexible_dataset import FlexibleDataset
 import argparse 
 
 from fmoe.layers import FMoE
-from fmoe.gates import SwitchGate
+
+#from fastmoe.fmoe.layers import FMoE
+#from fastmoe.fmoe.gates import SwitchGate
 from utils import TimedModule, get_timing_modules
 
 parser = argparse.ArgumentParser(
@@ -91,17 +93,15 @@ def run_inference_workload(rank):
                 output = output.reshape(batch_size, seq_len, d_model)
                 return output
         
-        class RouterWrapper(nn.Module):
-            def __init__(self, router):
-                super().__init__()
-                self.router = router
+        # class RouterWrapper(nn.Module):
+        #     def __init__(self, router):
+        #         super().__init__()
+        #         self.router = router
 
-            def forward(self, x):
-                print(f"Before: {x.shape}")
-                x = self.router(x)
-                print(f"After: {x[0].shape}")
-                print(f"[rank:{dist.get_rank()}] {torch.bincount(x[0].view(-1).cpu()).view(-1, args.num_experts // args.world_size).sum(dim=1)}")
-                return x
+        #     def forward(self, x):
+        #         x = self.router(x)
+        #         print(f"[rank:{dist.get_rank()}_gate_output] {torch.bincount(x[0].view(-1).cpu()).view(-1, args.num_experts // args.world_size).sum(dim=1)}")
+        #         return x
 
         # Update to add FMoE to it
         def add_fmoe_model(module, idx):
@@ -130,7 +130,7 @@ def run_inference_workload(rank):
                         with torch.no_grad():
                             new.gate.gate.weight.copy_(router.classifier.weight)
 
-                        new.gate = RouterWrapper(new.gate)
+                        #new.gate = RouterWrapper(new.gate)
                         # print(new.gate.capacity)
                         # exit(0)
                         

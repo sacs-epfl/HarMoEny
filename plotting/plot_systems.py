@@ -6,7 +6,7 @@ from utils import save_plot
 num_moe_layers = 12
 
 metrics = ["avg_gpu_util", "avg_gpu_mem_used", "cpu_util", "cpu_mem_used"]
-datasets = ["bookcorpus", "wikitext", "random", "wmt19"]
+datasets = ["bookcorpus", "wikitext", "random", "wmt19", "skew50"]
 systems = ["deepspeed", "exflow", "fastmoe", "fastermoe", "harmony"]
 
 def plot_workload_duration_policy_vs_dataset():

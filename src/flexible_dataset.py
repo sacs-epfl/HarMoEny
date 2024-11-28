@@ -27,13 +27,16 @@ class FlexibleDataset(Dataset):
             self.dataset = load_dataset("neuralwork/arxiver", split=f"train[:{num_samples}]", streaming=False, cache_dir="/cache")
         elif self.dataset_option == "random":
             pass
+        elif self.dataset_option.startswith("skew"):
+            x = int(self.dataset_option.split("skew")[1])
+            e = int((x * self.tokenizer.vocab_size - 100) / (100 - x))
+            self.distribution = [i for i in range(self.tokenizer.vocab_size)]
+            for _ in range(e):
+                self.distribution.append(0)
         else:
             raise ValueError("Invalid dataset option")
 
-        if self.dataset_option != "random":
-            self.dataset_size = len(self.dataset)
-        else:
-            self.dataset_size = num_samples
+        self.dataset_size = len(self.dataset) if hasattr(self, "dataset") else num_samples
 
     def __len__(self):
         return self.dataset_size
@@ -49,6 +52,8 @@ class FlexibleDataset(Dataset):
             text = "translate English to German: " + self.dataset[idx]["translation"]["en"]
         elif self.dataset_option == "random":
             return self._generate_random_entry()
+        elif self.dataset_option.startswith("skew"):
+            return self._generate_skewed_entry()
 
         tokenized_text = self.tokenizer.encode(text, truncation=True, max_length=self.max_length, return_tensors="pt")
         if tokenized_text.size(1) < self.max_length:
@@ -78,6 +83,19 @@ class FlexibleDataset(Dataset):
     def _generate_random_entry(self):
 
         text_encoded = torch.randint(0, self.tokenizer.vocab_size, (self.max_length,))
+
+        encoder_tokenized = {
+            "input_ids": text_encoded,
+            "attention_mask": (text_encoded != self.tokenizer.pad_token_id).long(),
+            "decoder_input_ids": torch.tensor([self.tokenizer.pad_token_id])
+        }
+
+        return encoder_tokenized
+    
+    def _generate_skewed_entry(self):
+        indices = torch.randint(len(self.distribution), (self.max_length,))
+
+        text_encoded = torch.tensor(self.distribution)[indices]
 
         encoder_tokenized = {
             "input_ids": text_encoded,

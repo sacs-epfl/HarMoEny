@@ -205,7 +205,7 @@ def run_inference_workload(rank, model, batch=args.batch_size):
             stats = l.get_statistics()[args.warmup_rounds:]
 
             with open(file_path, "w") as f:
-                fieldnames = ["iteration", "total number of tokens sent", "total number of tokens recv", "latency (ms)", "comp latency (ms)", "expert distribution"]
+                fieldnames = ["iteration", "total number of tokens sent", "total number of tokens recv", "latency (ms)", "metadata latency (ms)", "comp latency (ms)", "expert distribution"]
 
                 writer = csv.DictWriter(f, fieldnames=fieldnames)
                 writer.writeheader()

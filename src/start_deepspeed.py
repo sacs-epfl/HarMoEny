@@ -27,7 +27,7 @@ from transformers.models.switch_transformers.modeling_switch_transformers import
 import deepspeed
 
 parser = argparse.ArgumentParser(
-    prog="Run inference on FastMoE",
+    prog="Run inference on DeepSpeed-MoE inference engine",
 )
 parser.add_argument("--dataset", default="sst2", type=str)
 parser.add_argument("--num_samples", default=0, type=int, help="Number of total samples across all GPUs")
@@ -38,6 +38,7 @@ parser.add_argument("--num_experts", default=8, type=int, help="Number of expert
 parser.add_argument("--warmup_rounds", default=3, type=int)
 parser.add_argument("--local_rank", default=0, type=int) 
 parser.add_argument("--world_size", default=8, type=int)
+parser.add_argument("--capacity_factor", default=10.0, type=float)
 args = parser.parse_args()
 
 
@@ -90,7 +91,7 @@ def run_inference_workload():
                         num_experts=args.num_experts,
                         ep_size=args.world_size,
                         k=1,
-                        eval_capacity_factor=10.0,
+                        eval_capacity_factor=args.capacity_factor,
                         #drop_tokens=False,
                         use_tutel=True,
                         top2_2nd_expert_sampling=False,
