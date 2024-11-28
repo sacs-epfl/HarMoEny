@@ -8,7 +8,7 @@ directory_path = "../data/systems/datasets"
 data = Data(directory_path)
 
 systems = ["deepspeed", "fastmoe", "fastermoe", "harmony", "exflow"]
-datasets = ["bookcorpus", "random", "wikitext", "wmt19", "skew50"]
+datasets = ["bookcorpus", "random", "wikitext", "wmt19", "skew50", "cocktail"]
 num_ranks = 8
 num_moe_layers = 12
 

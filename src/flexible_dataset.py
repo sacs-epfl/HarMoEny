@@ -13,6 +13,7 @@ class FlexibleDataset(Dataset):
         self.tokenizer = tokenizer
         self.max_length = seq_len
         self.dataset_option = dataset_name
+        self.num_samples = num_samples
         torch.manual_seed(random_seed)
 
         if self.dataset_option == "bookcorpus":
@@ -25,6 +26,14 @@ class FlexibleDataset(Dataset):
             self.dataset = load_dataset("wmt/wmt19", "de-en", split=f"train[:{num_samples}]", streaming=False, cache_dir="/cache")
         elif self.dataset_option == "arxiver":
             self.dataset = load_dataset("neuralwork/arxiver", split=f"train[:{num_samples}]", streaming=False, cache_dir="/cache")
+        elif self.dataset_option == "cocktail":
+            num_samples_each = (num_samples // 4)+1
+            self.datasets = [
+                load_dataset("bookcorpus/bookcorpus", split=f"train[:{num_samples_each}]", streaming=False, trust_remote_code=True, cache_dir="/cache"),
+                load_dataset("wikitext", "wikitext-103-raw-v1", split=f"train[:{num_samples_each}]", streaming=False, cache_dir="/cache"),
+                load_dataset("wmt/wmt19", "de-en", split=f"train[:{num_samples_each}]", streaming=False, cache_dir="/cache"),
+                load_dataset("neuralwork/arxiver", split=f"train[:{num_samples_each}]", streaming=False, cache_dir="/cache"),
+            ]
         elif self.dataset_option == "random":
             pass
         elif self.dataset_option.startswith("skew"):
@@ -36,10 +45,10 @@ class FlexibleDataset(Dataset):
         else:
             raise ValueError("Invalid dataset option")
 
-        self.dataset_size = len(self.dataset) if hasattr(self, "dataset") else num_samples
-
     def __len__(self):
-        return self.dataset_size
+        if hasattr(self, "dataset"):
+            return min(len(self.dataset), self.num_samples)
+        return self.num_samples 
 
     def __getitem__(self, idx):
         if self.dataset_option == "bookcorpus" or self.dataset_option == "wikitext":
@@ -50,6 +59,16 @@ class FlexibleDataset(Dataset):
             text = "summarize: " + self.dataset[idx]["abstract"]
         elif self.dataset_option == "wmt19":
             text = "translate English to German: " + self.dataset[idx]["translation"]["en"]
+        elif self.dataset_option == "cocktail":
+            num = random.randint(0,len(self.datasets)-1)
+            data = self.datasets[num][idx // 4]
+            if num == 0 or num == 1:
+                data = data["text"]
+            elif num == 2:
+                data = data["translation"]["en"]
+            elif num == 3:
+                data = data["abstract"]
+            text = f"summarize: {data}"
         elif self.dataset_option == "random":
             return self._generate_random_entry()
         elif self.dataset_option.startswith("skew"):
