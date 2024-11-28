@@ -101,21 +101,19 @@ class MoELayer(nn.Module):
         # Entry will be a 1 on which expert to work on for the specific token
         # at specific sequence index on specific sample, rest will be 0
 
-        self.expert_freqs.append(router_mask.sum(dim=(0,1)).tolist())
+        #self.expert_freqs.append(router_mask.sum(dim=(0,1)).tolist())
         
         expert_index = torch.argmax(router_mask, dim=-1)
-
         router_mask = router_mask.bool()
 
         num_toks_per_expert = []
-
-        # Collect some stats
-        tot = 0
+        num_toks_send = 0
         for j in range(self.num_experts):
             size = hidden_states[router_mask[:,:,j]].shape[0]
             num_toks_per_expert.append(size)
-            tot += size
-        self.tot_num_toks_send.append(tot)
+            num_toks_send += size
+        self.tot_num_toks_send.append(num_toks_send)
+        self.expert_freqs.append(num_toks_per_expert)
         
         metadata_send = torch.tensor([num_toks_per_expert] * self.num_gpus, dtype=torch.int, device="cuda")
         metadata_recv = torch.zeros((self.num_gpus, self.num_experts), dtype=torch.int, device="cuda")
@@ -128,7 +126,7 @@ class MoELayer(nn.Module):
 
         # Turn schedule and hidden_states into array of tensors
         # to distribute to each GPU
-        tokens_send, send_splits = self.scheduler.distribute_tokens(schedule, hidden_states, router_mask)
+        tokens_send, send_splits = self.scheduler.distribute_tokens(schedule, hidden_states, router_mask, num_toks_send)
         tokens_recv, recv_splits = self.scheduler.allocate_recv_tensors(schedule)
         self.tot_num_toks_recv.append(tokens_recv.shape[0])
 
@@ -165,7 +163,7 @@ class MoELayer(nn.Module):
         # comp_end_event.record()
         # comp_end_event.synchronize()
         # self.computation_latencies.append(comp_start_event.elapsed_time(comp_end_event))
-        tokens_recv = self.scheduler.ungroup_experts(schedule, expert_tokens)
+        tokens_recv = self.scheduler.ungroup_experts(schedule, expert_tokens, tokens_recv.shape[0])
 
         dist.all_to_all_single(
             tokens_send, 
