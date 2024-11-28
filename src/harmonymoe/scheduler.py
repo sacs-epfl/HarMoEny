@@ -67,7 +67,6 @@ class Scheduler():
                 if amount != 0:
                     start = amount_expert_filled[j]
                     tokens[tokens_idx:tokens_idx+amount] = hidden_states[router_mask[:,:,j]][start:start+amount]
-                    #tokens = torch.cat((tokens, hidden_states[router_mask[:,:,j]][start:start+amount]))
                     tokens_idx += amount
                     amount_expert_filled[j] += amount
             post = tokens_idx
@@ -194,7 +193,6 @@ class Scheduler():
                 if amount != 0:
                     start = expert_tokens_idx[j]
                     tokens[tokens_idx:tokens_idx+amount] = expert_tokens[j][start:start+amount]
-                    #tokens = torch.cat((tokens, expert_tokens[j][start:start+amount]))
                     tokens_idx += amount
                     expert_tokens_idx[j] += amount
         
@@ -250,23 +248,6 @@ class Scheduler():
                     raise Exception("Failure on the deck: there is an expert overboard")
                 schedule[i][j][target] = meta[i][j].item()
         return schedule
-
-    # # OLD
-    # def schedule_deepspeed(self, meta, _):
-    #     schedule = [[[0 for _ in range(self.num_gpus)] for _ in range(self.num_experts)] for _ in range(self.num_gpus)]
-
-    #     for i in range(self.num_gpus): # source
-    #         for j in range(self.num_experts): # expert
-    #             target = -1
-    #             for k in range(self.num_gpus):
-    #                 if j in self.deepspeed_assign[k]:
-    #                     target = k 
-    #                     break
-    #             if target == -1:
-    #                 raise Exception("Failure on the deck: there is an expert overboard")
-    #             schedule[i][j][target] = meta[i][j].item()
-    #     return schedule
-
 
     def schedule_drop(self, meta, _):
         schedule = [[[0 for _ in range(self.num_gpus)] for _ in range(self.num_experts)] for _ in range(self.num_gpus)]

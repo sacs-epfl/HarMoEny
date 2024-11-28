@@ -100,8 +100,6 @@ class MoELayer(nn.Module):
         # router_mask has dim (batch_size, seq_len, num_experts)
         # Entry will be a 1 on which expert to work on for the specific token
         # at specific sequence index on specific sample, rest will be 0
-
-        #self.expert_freqs.append(router_mask.sum(dim=(0,1)).tolist())
         
         expert_index = torch.argmax(router_mask, dim=-1)
         router_mask = router_mask.bool()
@@ -130,39 +128,15 @@ class MoELayer(nn.Module):
         tokens_recv, recv_splits = self.scheduler.allocate_recv_tensors(schedule)
         self.tot_num_toks_recv.append(tokens_recv.shape[0])
 
-        # tokens_send = [t.contiguous() for t in tokens_send]
-        # tokens_send_tensor = torch.cat(tokens_send, dim=0)
-        #print(f"[Rank:{dist.get_rank()}] {tokens_send_tensor.shape}")
-        #send_splits = [t.shape[0] for t in tokens_send]
-
-        #recv_splits = [t.shape[0] for t in tokens_recv]
-        #tokens_recv_tensor = torch.empty((sum(recv_splits), tokens_send.shape[1]), device="cuda")
-        #print(f"[Rank:{dist.get_rank()}] {tokens_recv_tensor.shape}")
-        
-        # start = torch.cuda.Event(enable_timing=True)
-        # end = torch.cuda.Event(enable_timing=True)
-        # start.record()
-        #dist.all_to_all(tokens_recv, tokens_send)
         dist.all_to_all_single(
             tokens_recv,
             tokens_send,
             output_split_sizes=recv_splits,
             input_split_sizes=send_splits,
         )
-        # end.record()
-        # end.synchronize()
-        # self.metadata_comm_latencies.append(start.elapsed_time(end))
-
-        #tokens_recv = torch.split(tokens_recv_tensor, recv_splits)
 
         expert_tokens = self.scheduler.group_experts(schedule, tokens_recv)
-        # comp_start_event = torch.cuda.Event(enable_timing=True)
-        # comp_end_event = torch.cuda.Event(enable_timing=True)
-        # comp_start_event.record()
         expert_tokens = self.expert_manager(expert_tokens, schedule=schedule)
-        # comp_end_event.record()
-        # comp_end_event.synchronize()
-        # self.computation_latencies.append(comp_start_event.elapsed_time(comp_end_event))
         tokens_recv = self.scheduler.ungroup_experts(schedule, expert_tokens, tokens_recv.shape[0])
 
         dist.all_to_all_single(
