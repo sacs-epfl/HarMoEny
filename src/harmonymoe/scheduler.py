@@ -51,73 +51,155 @@ class Scheduler():
     
     def __call__(self, meta, topo):
         return self.scheduler(meta, topo)
-
-    def distribute_tokens(self, schedule: [[[int]]], hidden_states, router_mask):
-        distribution = [[] for _ in range(self.num_gpus)]
-
-        for j in range(self.num_experts):
-            start = 0
-            for i in range(self.num_gpus):
-                if schedule[dist.get_rank()][j][i] != 0:
-                    size = schedule[dist.get_rank()][j][i]
-                    distribution[i].append(hidden_states[router_mask[:,:,j]][start:start+size,:])
-                    start += size
-
-        return [torch.cat(tokens, dim=0) if len(tokens) != 0 else torch.empty((0, self.d_model), device="cuda") for tokens in distribution]
     
-    # Put appropriate updates into hidden_states
-    def gather_tokens(self, schedule: [[[int]]], gpu_tokens: [torch.Tensor], hidden_states, router_mask):
-        expert_start_idx = [0 for _ in range(self.num_experts)]
-        for i in range(self.num_gpus):
-            start = 0
-            for j in range(self.num_experts):
-                if schedule[dist.get_rank()][j][i] != 0:
-                    size = schedule[dist.get_rank()][j][i]
-                    hidden_states[router_mask[:,:,j]][expert_start_idx[j]:expert_start_idx[j]+size,:] = gpu_tokens[i][start:start+size,:]
-                    start += size
+    def distribute_tokens(self, schedule: [[[int]]], hidden_states, router_mask):
+        tokens = torch.empty((0,self.d_model), device="cuda")
+        send_splits = []
+        rank = dist.get_rank()
 
-        return hidden_states
+        amount_expert_filled = [0] * self.num_experts
+
+        for i in range(self.num_gpus):
+            pre = tokens.shape[0]
+            for j in range(self.num_experts):
+                amount = schedule[rank][j][i]
+                if amount != 0:
+                    start = amount_expert_filled[j]
+                    tokens = torch.cat((tokens, hidden_states[router_mask[:,:,j]][start:start+amount]))
+                    amount_expert_filled[j] += amount
+            post = tokens.shape[0]
+            send_splits.append(post-pre)
+        
+        return tokens, send_splits
+
+
+
+    # def distribute_tokens(self, schedule: [[[int]]], hidden_states, router_mask):
+    #     distribution = [[] for _ in range(self.num_gpus)]
+
+    #     for j in range(self.num_experts):
+    #         start = 0
+    #         for i in range(self.num_gpus):
+    #             if schedule[dist.get_rank()][j][i] != 0:
+    #                 size = schedule[dist.get_rank()][j][i]
+    #                 distribution[i].append(hidden_states[router_mask[:,:,j]][start:start+size,:])
+    #                 start += size
+
+    #     return [torch.cat(tokens, dim=0) if len(tokens) != 0 else torch.empty((0, self.d_model), device="cuda") for tokens in distribution]
+    
+    def gather_tokens(self, schedule: [[[int]]], tokens: torch.Tensor, hidden_states, router_mask):
+        tokens_idx = 0
+        experts_idx = [0 for _ in range(self.num_experts)]
+        rank = dist.get_rank()
+
+        for i in range(self.num_gpus):
+            for j in range(self.num_experts):
+                amount = schedule[rank][j][i]
+                if amount != 0:
+                    start = experts_idx[j]
+                    hidden_states[router_mask[:,:,j]][start:start+amount] = tokens[tokens_idx:tokens_idx+amount]
+                    tokens_idx += amount
+                    experts_idx[j] += amount
+
+        return hidden_states 
+
+
+    # Put appropriate updates into hidden_states
+    # def gather_tokens(self, schedule: [[[int]]], gpu_tokens: [torch.Tensor], hidden_states, router_mask):
+    #     expert_start_idx = [0 for _ in range(self.num_experts)]
+    #     for i in range(self.num_gpus):
+    #         start = 0
+    #         for j in range(self.num_experts):
+    #             if schedule[dist.get_rank()][j][i] != 0:
+    #                 size = schedule[dist.get_rank()][j][i]
+    #                 hidden_states[router_mask[:,:,j]][expert_start_idx[j]:expert_start_idx[j]+size,:] = gpu_tokens[i][start:start+size,:]
+    #                 start += size
+
+    #     return hidden_states
 
     def allocate_recv_tensors(self, schedule: [[[int]]]):
-        recv = []
+        recv_splits = []
+        rank = dist.get_rank()
 
         for i in range(self.num_gpus):
             num_tokens = 0
             for j in range(self.num_experts):
-                num_tokens += schedule[i][j][dist.get_rank()]
-            recv.append(torch.empty((num_tokens, self.d_model), device="cuda"))
+                num_tokens += schedule[i][j][rank]
+            recv_splits.append(num_tokens)
+
+        return torch.empty((sum(recv_splits), self.d_model), device="cuda"), recv_splits
+
+    # def allocate_recv_tensors(self, schedule: [[[int]]]):
+    #     recv = []
+
+    #     for i in range(self.num_gpus):
+    #         num_tokens = 0
+    #         for j in range(self.num_experts):
+    #             num_tokens += schedule[i][j][dist.get_rank()]
+    #         recv.append(torch.empty((num_tokens, self.d_model), device="cuda"))
         
-        return recv
+    #     return recv
+
+    def group_experts(self, schedule: [[[int]]], tokens: torch.Tensor):
+        expert_tokens = [torch.empty((0, self.d_model), device="cuda") for _ in range(self.num_experts)]
+        rank = dist.get_rank()
+
+        cur = 0
+        for i in range(self.num_gpus):
+            for j in range(self.num_experts):
+                amount = schedule[i][j][rank]
+                if amount != 0:
+                    expert_tokens[j] = torch.cat((expert_tokens[j], tokens[cur:cur+amount]))
+                    cur += amount
+        
+        return expert_tokens
     
     # A transformation to go from tokens index by GPU to expert 
-    def group_experts(self, schedule: [[[int]]], gpu_tokens: [torch.Tensor]):
-        expert_tokens = [[] for _ in range(self.num_experts)]
+    # def group_experts(self, schedule: [[[int]]], gpu_tokens: [torch.Tensor]):
+    #     expert_tokens = [[] for _ in range(self.num_experts)]
+
+    #     for i in range(self.num_gpus):
+    #         start = 0
+    #         end = 0
+    #         for j in range(self.num_experts):
+    #             if schedule[i][j][dist.get_rank()] != 0:
+    #                 end += schedule[i][j][dist.get_rank()]
+    #                 expert_tokens[j].append(gpu_tokens[i][start:end])
+    #                 start = end
+
+    #     return [torch.cat(tokens, dim=0) if len(tokens) != 0 else torch.empty((0, self.d_model), device="cuda") for tokens in expert_tokens]
+    
+
+    def ungroup_experts(self, schedule: [[[int]]], expert_tokens: torch.Tensor):
+        tokens = torch.empty((0, self.d_model), device="cuda")
+        expert_tokens_idx = [0 for _ in range(self.num_experts)]
+        rank = dist.get_rank()
 
         for i in range(self.num_gpus):
-            start = 0
-            end = 0
             for j in range(self.num_experts):
-                if schedule[i][j][dist.get_rank()] != 0:
-                    end += schedule[i][j][dist.get_rank()]
-                    expert_tokens[j].append(gpu_tokens[i][start:end])
-                    start = end
+                amount = schedule[i][j][rank]
+                if amount != 0:
+                    start = expert_tokens_idx[j]
+                    tokens = torch.cat((tokens, expert_tokens[j][start:start+amount]))
+                    expert_tokens_idx[j] += amount
+        
+        return tokens
 
-        return [torch.cat(tokens, dim=0) if len(tokens) != 0 else torch.empty((0, self.d_model), device="cuda") for tokens in expert_tokens]
 
     # A transformation to go from tokens index by expert to GPU
-    def ungroup_experts(self, schedule: [[[int]]], expert_tokens: [torch.Tensor]):
-        gpu_tokens = [[] for _ in range(self.num_gpus)]
+    # def ungroup_experts(self, schedule: [[[int]]], expert_tokens: [torch.Tensor]):
+    #     gpu_tokens = [[] for _ in range(self.num_gpus)]
 
-        for j in range(self.num_experts):
-            start = 0
-            end = 0
-            for i in range(self.num_gpus):
-                if schedule[i][j][dist.get_rank()] != 0:
-                    end += schedule[i][j][dist.get_rank()]
-                    gpu_tokens[i].append(expert_tokens[j][start:end])
-                    start = end
+    #     for j in range(self.num_experts):
+    #         start = 0
+    #         end = 0
+    #         for i in range(self.num_gpus):
+    #             if schedule[i][j][dist.get_rank()] != 0:
+    #                 end += schedule[i][j][dist.get_rank()]
+    #                 gpu_tokens[i].append(expert_tokens[j][start:end])
+    #                 start = end
 
-        return [torch.cat(tokens, dim=0) if len(tokens) != 0 else torch.empty((0, self.d_model), device="cuda") for tokens in gpu_tokens]
+    #     return [torch.cat(tokens, dim=0) if len(tokens) != 0 else torch.empty((0, self.d_model), device="cuda") for tokens in gpu_tokens]
 
     def generate_deepspeed_topo(self):
         topology = [[] for _ in range(self.num_gpus)]

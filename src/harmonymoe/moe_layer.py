@@ -80,8 +80,8 @@ class MoELayer(nn.Module):
         for i in range(len(self.tot_num_toks_send)):
             stats.append({
                 "latency (ms)": self.latencies[i],
-                "metadata latency (ms)": self.metadata_comm_latencies[i],
-                "comp latency (ms)": self.computation_latencies[i],
+                "metadata latency (ms)": self.metadata_comm_latencies[i] if i < len(self.metadata_comm_latencies) else -1,
+                "comp latency (ms)": self.computation_latencies[i] if i < len(self.computation_latencies) else -1,
                 "total number of tokens sent": self.tot_num_toks_send[i],
                 "total number of tokens recv": self.tot_num_toks_recv[i],
                 "expert distribution": self.expert_freqs[i],
@@ -128,46 +128,51 @@ class MoELayer(nn.Module):
 
         # Turn schedule and hidden_states into array of tensors
         # to distribute to each GPU
-        tokens_send = self.scheduler.distribute_tokens(schedule, hidden_states, router_mask)
-        tokens_recv = self.scheduler.allocate_recv_tensors(schedule)
-        self.tot_num_toks_recv.append(sum(list(map(lambda x: x.shape[0], tokens_recv))))
+        tokens_send, send_splits = self.scheduler.distribute_tokens(schedule, hidden_states, router_mask)
+        tokens_recv, recv_splits = self.scheduler.allocate_recv_tensors(schedule)
+        self.tot_num_toks_recv.append(tokens_recv.shape[0])
 
-        tokens_send = [t.contiguous() for t in tokens_send]
-        tokens_send_tensor = torch.cat(tokens_send, dim=0)
+        # tokens_send = [t.contiguous() for t in tokens_send]
+        # tokens_send_tensor = torch.cat(tokens_send, dim=0)
         #print(f"[Rank:{dist.get_rank()}] {tokens_send_tensor.shape}")
-        send_splits = [t.shape[0] for t in tokens_send]
+        #send_splits = [t.shape[0] for t in tokens_send]
 
-        recv_splits = [t.shape[0] for t in tokens_recv]
-        tokens_recv_tensor = torch.empty((sum(recv_splits), tokens_send_tensor.shape[1]), device="cuda")
+        #recv_splits = [t.shape[0] for t in tokens_recv]
+        #tokens_recv_tensor = torch.empty((sum(recv_splits), tokens_send.shape[1]), device="cuda")
         #print(f"[Rank:{dist.get_rank()}] {tokens_recv_tensor.shape}")
         
-        start = torch.cuda.Event(enable_timing=True)
-        end = torch.cuda.Event(enable_timing=True)
-        start.record()
+        # start = torch.cuda.Event(enable_timing=True)
+        # end = torch.cuda.Event(enable_timing=True)
+        # start.record()
         #dist.all_to_all(tokens_recv, tokens_send)
         dist.all_to_all_single(
-            tokens_recv_tensor,
-            tokens_send_tensor,
+            tokens_recv,
+            tokens_send,
             output_split_sizes=recv_splits,
             input_split_sizes=send_splits,
         )
-        end.record()
-        end.synchronize()
-        self.metadata_comm_latencies.append(start.elapsed_time(end))
+        # end.record()
+        # end.synchronize()
+        # self.metadata_comm_latencies.append(start.elapsed_time(end))
 
-        tokens_recv = torch.split(tokens_recv_tensor, recv_splits)
+        #tokens_recv = torch.split(tokens_recv_tensor, recv_splits)
 
         expert_tokens = self.scheduler.group_experts(schedule, tokens_recv)
-        comp_start_event = torch.cuda.Event(enable_timing=True)
-        comp_end_event = torch.cuda.Event(enable_timing=True)
-        comp_start_event.record()
+        # comp_start_event = torch.cuda.Event(enable_timing=True)
+        # comp_end_event = torch.cuda.Event(enable_timing=True)
+        # comp_start_event.record()
         expert_tokens = self.expert_manager(expert_tokens, schedule=schedule)
-        comp_end_event.record()
-        comp_end_event.synchronize()
-        self.computation_latencies.append(comp_start_event.elapsed_time(comp_end_event))
+        # comp_end_event.record()
+        # comp_end_event.synchronize()
+        # self.computation_latencies.append(comp_start_event.elapsed_time(comp_end_event))
         tokens_recv = self.scheduler.ungroup_experts(schedule, expert_tokens)
 
-        dist.all_to_all(tokens_send, tokens_recv)
+        dist.all_to_all_single(
+            tokens_send, 
+            tokens_recv, 
+            output_split_sizes=send_splits, 
+            input_split_sizes=recv_splits
+        )
 
         hidden_states = self.scheduler.gather_tokens(schedule, tokens_send, hidden_states, router_mask)
 
