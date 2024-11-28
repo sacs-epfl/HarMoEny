@@ -117,44 +117,12 @@ class MoELayer(nn.Module):
             tot += size
         self.tot_num_toks_send.append(tot)
         
-        # metadata_send = [torch.tensor(num_toks_per_expert, dtype=torch.int, device="cuda") for _ in range(self.num_gpus)]
-        # metadata_recv = [torch.zeros(self.num_experts, dtype=torch.int, device="cuda") for _ in range(self.num_gpus)]
-
-        # # Metadata all_to_all
-        # start = torch.cuda.Event(enable_timing=True)
-        # end = torch.cuda.Event(enable_timing=True)
-        # start.record()
-        # dist.all_to_all(metadata_recv, metadata_send)
-        # end.record()
-        # end.synchronize()
-        # self.metadata_comm_latencies.append(start.elapsed_time(end))
-
-        # metadata_send = torch.tensor(num_toks_per_expert, dtype=torch.int, device="cuda")
-        # metadata_recv = [torch.zeros(self.num_experts, dtype=torch.int, device="cuda") for _ in range(self.num_gpus)]
-
-        # # Metadata all_gather
-        # start = torch.cuda.Event(enable_timing=True)
-        # end = torch.cuda.Event(enable_timing=True)
-        # start.record()
-        # dist.all_gather(metadata_recv, metadata_send)
-        # end.record()
-        # end.synchronize()
-        # self.metadata_comm_latencies.append(start.elapsed_time(end))
-
         metadata_send = torch.tensor([num_toks_per_expert] * self.num_gpus, dtype=torch.int, device="cuda")
         metadata_recv = torch.zeros((self.num_gpus, self.num_experts), dtype=torch.int, device="cuda")
 
         # Metadata all_to_all_single
-        start = torch.cuda.Event(enable_timing=True)
-        end = torch.cuda.Event(enable_timing=True)
-        start.record()
         dist.all_to_all_single(metadata_recv, metadata_send)
-        end.record()
-        end.synchronize()
-        self.metadata_comm_latencies.append(start.elapsed_time(end))
-
-
-
+        
         # Create global schedule
         schedule = self.scheduler(metadata_recv, self.expert_manager.get_cached())
 
@@ -163,8 +131,31 @@ class MoELayer(nn.Module):
         tokens_send = self.scheduler.distribute_tokens(schedule, hidden_states, router_mask)
         tokens_recv = self.scheduler.allocate_recv_tensors(schedule)
         self.tot_num_toks_recv.append(sum(list(map(lambda x: x.shape[0], tokens_recv))))
+
+        tokens_send = [t.contiguous() for t in tokens_send]
+        tokens_send_tensor = torch.cat(tokens_send, dim=0)
+        #print(f"[Rank:{dist.get_rank()}] {tokens_send_tensor.shape}")
+        send_splits = [t.shape[0] for t in tokens_send]
+
+        recv_splits = [t.shape[0] for t in tokens_recv]
+        tokens_recv_tensor = torch.empty((sum(recv_splits), tokens_send_tensor.shape[1]), device="cuda")
+        #print(f"[Rank:{dist.get_rank()}] {tokens_recv_tensor.shape}")
         
-        dist.all_to_all(tokens_recv, tokens_send)
+        start = torch.cuda.Event(enable_timing=True)
+        end = torch.cuda.Event(enable_timing=True)
+        start.record()
+        #dist.all_to_all(tokens_recv, tokens_send)
+        dist.all_to_all_single(
+            tokens_recv_tensor,
+            tokens_send_tensor,
+            output_split_sizes=recv_splits,
+            input_split_sizes=send_splits,
+        )
+        end.record()
+        end.synchronize()
+        self.metadata_comm_latencies.append(start.elapsed_time(end))
+
+        tokens_recv = torch.split(tokens_recv_tensor, recv_splits)
 
         expert_tokens = self.scheduler.group_experts(schedule, tokens_recv)
         comp_start_event = torch.cuda.Event(enable_timing=True)
