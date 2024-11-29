@@ -7,7 +7,7 @@ from utils import save_plot
 num_moe_layers = 12
 
 metrics = ["avg_gpu_util", "avg_gpu_mem_used", "cpu_util", "cpu_mem_used"]
-datasets = ["bookcorpus", "wikitext", "random", "wmt19", "skew50"]
+datasets = ["bookcorpus", "wikitext", "random", "wmt19", "skew50", "cocktail"]
 systems = ["deepspeed", "exflow", "fastmoe", "fastermoe", "harmony"]
 
 def plot_workload_duration_policy_vs_dataset():
@@ -76,10 +76,6 @@ def plot_workload_duration_proportion_policy_vs_dataset():
 
     color_palette = colormaps.get_cmap("tab10")  
     system_colors = {system: color_palette(i) for i, system in enumerate(systems)}
-
-    for i, (dataset, positions) in enumerate(zip(pivot_df.index, x_positions)):
-        for j, sys in enumerate(pivot_df.columns):
-            ax.bar(positions[j], pivot_df.loc[dataset, sys], width=bar_width, color=system_colors[sys], label=sys if i == 0 else "")
 
     for i, (dataset, positions) in enumerate(zip(pivot_df.index, x_positions)):
         for j, sys in enumerate(pivot_df.columns):

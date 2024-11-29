@@ -5,17 +5,17 @@ world_size=8
 num_experts=128
 
 cd ..
-# ########## COCKTAIL ############
-# python3 src/start_harmony.py \
-#     --dataset cocktail \
-#     --num_samples $num_samples \
-#     --batch_size 2250 \
-#     --seq_len $seq_len \
-#     --model_name "google/switch-base-$num_experts" \
-#     --scheduling_policy "harmony" \
-#     --expert_cache_size 16 \
-#     --world_size $world_size \
-#     --pa "$output_path/cocktail/harmony"
+########## COCKTAIL ############
+python3 src/start_harmony.py \
+    --dataset cocktail \
+    --num_samples $num_samples \
+    --batch_size 2500 \
+    --seq_len $seq_len \
+    --model_name "google/switch-base-$num_experts" \
+    --scheduling_policy "harmony" \
+    --expert_cache_size 16 \
+    --world_size $world_size \
+    --pa "$output_path/cocktail/harmony"
 
 # python3 src/start_harmony.py \
 #     --dataset cocktail \
@@ -80,33 +80,33 @@ cd ..
 #     --expert_placement "ExFlow/placement/exp${num_experts}_gpu${world_size}.json" \
 #     --pa "$output_path/skew95/exflow"
 
-python3 src/start_fastmoe.py \
-    --dataset skew95 \
-    --num_samples $num_samples \
-    --batch_size 300 \
-    --seq_len $seq_len \
-    --num_experts $num_experts \
-    --world_size $world_size \
-    --pa "$output_path/skew95/fastmoe"
+# python3 src/start_fastmoe.py \
+#     --dataset skew95 \
+#     --num_samples $num_samples \
+#     --batch_size 300 \
+#     --seq_len $seq_len \
+#     --num_experts $num_experts \
+#     --world_size $world_size \
+#     --pa "$output_path/skew95/fastmoe"
 
-python3 src/start_fastermoe.py \
-    --dataset skew95 \
-    --num_samples $num_samples \
-    --batch_size 300 \
-    --seq_len $seq_len \
-    --num_experts $num_experts \
-    --world_size $world_size \
-    --pa "$output_path/skew95/fastermoe"
+# python3 src/start_fastermoe.py \
+#     --dataset skew95 \
+#     --num_samples $num_samples \
+#     --batch_size 300 \
+#     --seq_len $seq_len \
+#     --num_experts $num_experts \
+#     --world_size $world_size \
+#     --pa "$output_path/skew95/fastermoe"
 
-deepspeed --num_gpus $world_size src/start_deepspeed.py \
-    --dataset skew95 \
-    --num_samples $num_samples \
-    --batch_size 300 \
-    --seq_len $seq_len \
-    --capacity_factor 25.0 \
-    --num_experts $num_experts \
-    --world_size $world_size \
-    --pa "$output_path/skew95/deepspeed"
+# deepspeed --num_gpus $world_size src/start_deepspeed.py \
+#     --dataset skew95 \
+#     --num_samples $num_samples \
+#     --batch_size 300 \
+#     --seq_len $seq_len \
+#     --capacity_factor 25.0 \
+#     --num_experts $num_experts \
+#     --world_size $world_size \
+#     --pa "$output_path/skew95/deepspeed"
 
 
 # ########## SKEW50 ############

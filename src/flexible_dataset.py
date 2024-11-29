@@ -66,7 +66,7 @@ class FlexibleDataset(Dataset):
             text = "translate English to German: " + self.dataset[idx % self.dataset_length]["translation"]["en"]
         elif self.dataset_option == "cocktail":
             num = random.randint(0,len(self.datasets)-1)
-            data = self.datasets[num][(idx//4)% self.dataset_lengths[num]]
+            data = self.datasets[num][(idx//4) % self.dataset_lengths[num]]
             if num == 0 or num == 1:
                 data = data["text"]
             elif num == 2:
