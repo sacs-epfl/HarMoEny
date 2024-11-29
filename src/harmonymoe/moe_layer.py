@@ -135,7 +135,6 @@ class MoELayer(nn.Module):
         self.start_metadata.record()
         dist.all_to_all_single(metadata_recv, metadata_send)
         self.end_metadata.record()
-        self.end_metadata.synchronize()
         
         # Create global schedule
         schedule = self.scheduler(metadata_recv, self.expert_manager.get_cached())
@@ -154,13 +153,11 @@ class MoELayer(nn.Module):
             input_split_sizes=send_splits,
         )
         self.end_first_transfer.record()
-        self.end_first_transfer.synchronize()
 
         expert_tokens = self.scheduler.group_experts(schedule, tokens_recv)
         self.start_computation.record()
         expert_tokens = self.expert_manager(expert_tokens, schedule=schedule)
         self.end_computation.record()
-        self.end_computation.synchronize()
         tokens_recv = self.scheduler.ungroup_experts(schedule, expert_tokens, tokens_recv.shape[0])
 
         self.start_second_transfer.record()
@@ -171,12 +168,11 @@ class MoELayer(nn.Module):
             input_split_sizes=recv_splits
         )
         self.end_second_transfer.record()
-        self.end_second_transfer.synchronize()
 
         hidden_states = self.scheduler.gather_tokens(schedule, tokens_send, hidden_states, router_mask)
 
         self.end_pass.record()
-        self.end_pass.synchronize()
+        self.end_pass.synchronize() # Will only have a single synchronize on the final event
         # Collect data
         self.latencies.append(self.start_pass.elapsed_time(self.end_pass))
         self.metadata_latencies.append(self.start_metadata.elapsed_time(self.end_metadata))
