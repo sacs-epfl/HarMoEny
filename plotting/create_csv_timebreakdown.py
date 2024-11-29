@@ -25,6 +25,7 @@ for i in range(num_layers):
     _df = pd.DataFrame(_df)
     max_comp = _df["comp latency (ms)"].max()
     _df["wait latency (ms)"] = max_comp - _df["comp latency (ms)"]
+    _df["second transfer latency (ms)"] -= _df["wait latency (ms)"]
     columns_to_sum = _df.columns.difference(["rank", "latency (ms)"])
     _df["other latency (ms)"] = (_df["latency (ms)"] - _df[columns_to_sum].sum(axis=1)).clip(lower=0)
     _df["layer"] = i
