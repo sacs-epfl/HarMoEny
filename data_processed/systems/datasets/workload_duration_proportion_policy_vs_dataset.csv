@@ -1,0 +1,26 @@
+,system,dataset,duration (s)
+0,deepspeed,bookcorpus,1.0
+1,deepspeed,random,1.0
+2,deepspeed,wikitext,1.0
+3,deepspeed,wmt19,1.0
+4,deepspeed,skew50,1.0
+5,fastmoe,bookcorpus,2.605294123121598
+6,fastmoe,random,2.3222943772430873
+7,fastmoe,wikitext,2.3393686457838982
+8,fastmoe,wmt19,2.5887065670525042
+9,fastmoe,skew50,5.209553593825948
+10,fastermoe,bookcorpus,2.57797430213582
+11,fastermoe,random,2.309778475617169
+12,fastermoe,wikitext,2.349299571072452
+13,fastermoe,wmt19,2.5374531334286408
+14,fastermoe,skew50,6.444977776251117
+15,harmony,bookcorpus,2.6712373369885665
+16,harmony,random,2.7772037927855
+17,harmony,wikitext,2.6966939080248236
+18,harmony,wmt19,2.770448568105137
+19,harmony,skew50,8.550340785924938
+20,exflow,bookcorpus,2.066129826927737
+21,exflow,random,1.844229293365449
+22,exflow,wikitext,2.1204321387808402
+23,exflow,wmt19,2.043097686540636
+24,exflow,skew50,4.84515007085508

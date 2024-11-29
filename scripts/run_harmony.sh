@@ -17,13 +17,13 @@ cd ..
 #         --path "outputs/harmony"
 
 python3 src/start_harmony.py \
-        --dataset bookcorpus \
-        --num_samples 80000 \
+        --dataset random \
+        --num_samples 200000 \
         --seq_len 120 \
         --model_name "google/switch-base-128" \
         --scheduling_policy "harmony" \
         --expert_cache_size 16 \
         --world_size 8 \
-        --batch_size 2000 \
+        --batch_size 2500 \
         --path "outputs/harmony/run" 
 

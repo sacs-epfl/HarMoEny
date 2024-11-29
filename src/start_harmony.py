@@ -159,6 +159,12 @@ def run_inference_workload(rank, model, batch=args.batch_size):
         model.cuda()
         model.eval()
 
+        # We need to call prepare on the MoE layers to create the cuda events
+        # The cuda events cannot be created at __init__ since the model object
+        # is transfered to different processes which have different GPUs
+        for l in get_moe_layers(model):
+            l.prepare()
+
         tokenizer = AutoTokenizer.from_pretrained(args.model_name, cache_dir="/cache")
 
         flexible_dataset = FlexibleDataset(
@@ -205,7 +211,7 @@ def run_inference_workload(rank, model, batch=args.batch_size):
             stats = l.get_statistics()[args.warmup_rounds:]
 
             with open(file_path, "w") as f:
-                fieldnames = ["iteration", "total number of tokens sent", "total number of tokens recv", "latency (ms)", "metadata latency (ms)", "comp latency (ms)", "expert distribution"]
+                fieldnames = ["iteration"] + list(stats[0].keys())
 
                 writer = csv.DictWriter(f, fieldnames=fieldnames)
                 writer.writeheader()

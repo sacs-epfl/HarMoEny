@@ -18,14 +18,19 @@ class FlexibleDataset(Dataset):
 
         if self.dataset_option == "bookcorpus":
             self.dataset = load_dataset("bookcorpus/bookcorpus", split=f"train[:{num_samples}]", streaming=False, trust_remote_code=True, cache_dir="/cache")
+            self.dataset_length = len(self.dataset)
         elif self.dataset_option == "wikitext":
             self.dataset = load_dataset("wikitext", "wikitext-103-raw-v1", split=f"train[:{num_samples}]", streaming=False, cache_dir="/cache")
+            self.dataset_length = len(self.dataset)
         elif self.dataset_option == "sst2":
             self.dataset = load_dataset("glue", "sst2", split=f"train[:{num_samples}]", streaming=False, cache_dir="/cache")
+            self.dataset_length = len(self.dataset)
         elif self.dataset_option == "wmt19":
             self.dataset = load_dataset("wmt/wmt19", "de-en", split=f"train[:{num_samples}]", streaming=False, cache_dir="/cache")
+            self.dataset_length = len(self.dataset)
         elif self.dataset_option == "arxiver":
             self.dataset = load_dataset("neuralwork/arxiver", split=f"train[:{num_samples}]", streaming=False, cache_dir="/cache")
+            self.dataset_length = len(self.dataset)
         elif self.dataset_option == "cocktail":
             num_samples_each = (num_samples // 4)+1
             self.datasets = [
@@ -34,6 +39,7 @@ class FlexibleDataset(Dataset):
                 load_dataset("wmt/wmt19", "de-en", split=f"train[:{num_samples_each}]", streaming=False, cache_dir="/cache"),
                 load_dataset("neuralwork/arxiver", split=f"train[:{num_samples_each}]", streaming=False, cache_dir="/cache"),
             ]
+            self.dataset_lengths = [len(self.datasets[i]) for i in range(4)]
         elif self.dataset_option == "random":
             pass
         elif self.dataset_option.startswith("skew"):
@@ -42,26 +48,25 @@ class FlexibleDataset(Dataset):
             self.distribution = [i for i in range(self.tokenizer.vocab_size)]
             for _ in range(e):
                 self.distribution.append(0)
+            self.distribution_len = len(self.distribution)
         else:
             raise ValueError("Invalid dataset option")
 
     def __len__(self):
-        if hasattr(self, "dataset"):
-            return min(len(self.dataset), self.num_samples)
         return self.num_samples 
 
     def __getitem__(self, idx):
         if self.dataset_option == "bookcorpus" or self.dataset_option == "wikitext":
-            text = "summarize: " + self.dataset[idx]["text"]
+            text = "summarize: " + self.dataset[idx % self.dataset_length]["text"]
         elif self.dataset_option == "sst2":
-            text = "summarize: " + self.dataset[idx]["sentence"]
+            text = "summarize: " + self.dataset[idx % self.dataset_length]["sentence"]
         elif self.dataset_option == "arxiver":
-            text = "summarize: " + self.dataset[idx]["abstract"]
+            text = "summarize: " + self.dataset[idx % self.dataset_length]["abstract"]
         elif self.dataset_option == "wmt19":
-            text = "translate English to German: " + self.dataset[idx]["translation"]["en"]
+            text = "translate English to German: " + self.dataset[idx % self.dataset_length]["translation"]["en"]
         elif self.dataset_option == "cocktail":
             num = random.randint(0,len(self.datasets)-1)
-            data = self.datasets[num][idx // 4]
+            data = self.datasets[num][(idx//4)% self.dataset_lengths[num]]
             if num == 0 or num == 1:
                 data = data["text"]
             elif num == 2:
@@ -112,7 +117,7 @@ class FlexibleDataset(Dataset):
         return encoder_tokenized
     
     def _generate_skewed_entry(self):
-        indices = torch.randint(len(self.distribution), (self.max_length,))
+        indices = torch.randint(0, self.distribution_len, (self.max_length,))
 
         text_encoded = torch.tensor(self.distribution)[indices]
 

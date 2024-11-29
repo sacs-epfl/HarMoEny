@@ -35,8 +35,11 @@ class MoELayer(nn.Module):
         # For statistics 
         self.tot_num_toks_send = []
         self.tot_num_toks_recv = []
+
         self.latencies = []
-        self.metadata_comm_latencies = []
+        self.metadata_latencies = []
+        self.first_transfer_latencies = []
+        self.second_transfer_latencies = []
         self.computation_latencies = []
 
         self.expert_freqs = []
@@ -74,13 +77,27 @@ class MoELayer(nn.Module):
             print(f"Error applying function '{repr(fn)}' to 'expert_manager': {e}")
 
         return self
+    
+    def prepare(self):
+        self.start_pass = torch.cuda.Event(enable_timing=True)
+        self.end_pass = torch.cuda.Event(enable_timing=True)
+        self.start_metadata = torch.cuda.Event(enable_timing=True)
+        self.end_metadata = torch.cuda.Event(enable_timing=True)
+        self.start_first_transfer = torch.cuda.Event(enable_timing=True)
+        self.end_first_transfer = torch.cuda.Event(enable_timing=True)
+        self.start_computation = torch.cuda.Event(enable_timing=True)
+        self.end_computation = torch.cuda.Event(enable_timing=True)
+        self.start_second_transfer = torch.cuda.Event(enable_timing=True)
+        self.end_second_transfer = torch.cuda.Event(enable_timing=True)
 
     def get_statistics(self, DIR=""):
         stats = []
         for i in range(len(self.tot_num_toks_send)):
             stats.append({
                 "latency (ms)": self.latencies[i],
-                "metadata latency (ms)": self.metadata_comm_latencies[i] if i < len(self.metadata_comm_latencies) else -1,
+                "metadata latency (ms)": self.metadata_latencies[i] if i < len(self.metadata_latencies) else -1,
+                "first transfer latency (ms)": self.first_transfer_latencies[i] if i < len(self.first_transfer_latencies) else -1,
+                "second transfer latency (ms)": self.second_transfer_latencies[i] if i < len(self.second_transfer_latencies) else -1,
                 "comp latency (ms)": self.computation_latencies[i] if i < len(self.computation_latencies) else -1,
                 "total number of tokens sent": self.tot_num_toks_send[i],
                 "total number of tokens recv": self.tot_num_toks_recv[i],
@@ -92,9 +109,7 @@ class MoELayer(nn.Module):
 
     @torch.no_grad()
     def forward(self, hidden_states):
-        start_event = torch.cuda.Event(enable_timing=True)
-        end_event = torch.cuda.Event(enable_timing=True)
-        start_event.record()
+        self.start_pass.record()
 
         router_mask, router_probs, router_logits = self.router(hidden_states)
         # router_mask has dim (batch_size, seq_len, num_experts)
@@ -117,7 +132,10 @@ class MoELayer(nn.Module):
         metadata_recv = torch.zeros((self.num_gpus, self.num_experts), dtype=torch.int, device="cuda")
 
         # Metadata all_to_all_single
+        self.start_metadata.record()
         dist.all_to_all_single(metadata_recv, metadata_send)
+        self.end_metadata.record()
+        self.end_metadata.synchronize()
         
         # Create global schedule
         schedule = self.scheduler(metadata_recv, self.expert_manager.get_cached())
@@ -128,29 +146,43 @@ class MoELayer(nn.Module):
         tokens_recv, recv_splits = self.scheduler.allocate_recv_tensors(schedule)
         self.tot_num_toks_recv.append(tokens_recv.shape[0])
 
+        self.start_first_transfer.record()
         dist.all_to_all_single(
             tokens_recv,
             tokens_send,
             output_split_sizes=recv_splits,
             input_split_sizes=send_splits,
         )
+        self.end_first_transfer.record()
+        self.end_first_transfer.synchronize()
 
         expert_tokens = self.scheduler.group_experts(schedule, tokens_recv)
+        self.start_computation.record()
         expert_tokens = self.expert_manager(expert_tokens, schedule=schedule)
+        self.end_computation.record()
+        self.end_computation.synchronize()
         tokens_recv = self.scheduler.ungroup_experts(schedule, expert_tokens, tokens_recv.shape[0])
 
+        self.start_second_transfer.record()
         dist.all_to_all_single(
             tokens_send, 
             tokens_recv, 
             output_split_sizes=send_splits, 
             input_split_sizes=recv_splits
         )
+        self.end_second_transfer.record()
+        self.end_second_transfer.synchronize()
 
         hidden_states = self.scheduler.gather_tokens(schedule, tokens_send, hidden_states, router_mask)
 
-        end_event.record()
-        end_event.synchronize()
-        self.latencies.append(start_event.elapsed_time(end_event))
+        self.end_pass.record()
+        self.end_pass.synchronize()
+        # Collect data
+        self.latencies.append(self.start_pass.elapsed_time(self.end_pass))
+        self.metadata_latencies.append(self.start_metadata.elapsed_time(self.end_metadata))
+        self.first_transfer_latencies.append(self.start_first_transfer.elapsed_time(self.end_first_transfer))
+        self.computation_latencies.append(self.start_computation.elapsed_time(self.end_computation))
+        self.second_transfer_latencies.append(self.start_second_transfer.elapsed_time(self.end_second_transfer))
 
         hidden_states = router_probs * hidden_states
         return hidden_states, (router_logits, expert_index)

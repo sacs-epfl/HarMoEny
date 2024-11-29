@@ -8,21 +8,49 @@ directory_path = "../data/systems/datasets"
 data = Data(directory_path)
 
 systems = ["deepspeed", "fastmoe", "fastermoe", "harmony", "exflow"]
-datasets = ["bookcorpus", "random", "wikitext", "wmt19", "skew50", "cocktail"]
+datasets = ["bookcorpus", "random", "wikitext", "wmt19", "skew50"]
 num_ranks = 8
 num_moe_layers = 12
 
 def create_workload_duration_policy_vs_dataset():
     df = []
-    for policy in systems:
+    for sys in systems:
         for dataset in datasets:
-            _df = data.load(f"{dataset}/{policy}/0/e2e.csv")
+            _df = data.load(f"{dataset}/{sys}/0/e2e.csv")
             df.append({
-                "policy": policy,
+                "system": sys,
                 "dataset": dataset,
                 "duration (s)": _df["latency (s)"].sum(axis=0)
             })
     save_pd(pd.DataFrame(df), "../data_processed/systems/datasets/workload_duration_policy_vs_dataset.csv")
+
+def create_workload_duration_proportion_policy_vs_dataset():
+    df = []
+    for sys in systems:
+        for dataset in datasets:
+            _df = data.load(f"{dataset}/{sys}/0/e2e.csv")
+            df.append({
+                "system": sys,
+                "dataset": dataset,
+                "duration (s)": _df["latency (s)"].sum(axis=0)
+            })
+    df = pd.DataFrame(df)
+    # for dataset in datasets:
+    #     df[df["dataset"] == dataset]["duration (s)"] = df[df["dataset"] == dataset]["duration (s)"] / df[(df["dataset"] == dataset) & (df["system"] == "deepspeed")]["duration (s)"]
+    
+    for dataset in datasets:
+        # Filter for the current dataset
+        mask = df["dataset"] == dataset
+        
+        # Get the DeepSpeed durations for the current dataset
+        deepspeed_durations = df.loc[mask & (df["system"] == "deepspeed"), "duration (s)"]
+        
+        # Ensure there's only one unique value for DeepSpeed durations
+        if not deepspeed_durations.empty:
+            deepspeed_duration = deepspeed_durations.iloc[0]
+            df.loc[mask, "duration (s)"] = deepspeed_duration / df.loc[mask, "duration (s)"]
+    
+    save_pd(df, "../data_processed/systems/datasets/workload_duration_proportion_policy_vs_dataset.csv")
 
 # Times are balanced proportional to the number of tokens
 def create_moe_layer_latency_prob_num_tokens_policy_vs_dataset():
@@ -98,6 +126,7 @@ def create_metric_across_iter_and_average():
 
 if __name__ == "__main__":
     create_workload_duration_policy_vs_dataset()
+    create_workload_duration_proportion_policy_vs_dataset()
     #create_moe_layer_latency_prob_num_tokens_policy_vs_dataset()
     #create_imbalance_across_iter_and_average()
     #create_metric_across_iter_and_average()
