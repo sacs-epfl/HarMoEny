@@ -50,7 +50,7 @@ class FlexibleDataset(Dataset):
             #     self.distribution.append(0)
             self.distribution = torch.cat([
                 torch.arange(self.tokenizer.vocab_size),
-                torch.zeros(e, dtype=torch.long)
+                torch.zeros(e, dtype=torch.long),
             ])
             self.distribution_len = len(self.distribution)
         else:

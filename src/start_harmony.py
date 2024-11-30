@@ -82,9 +82,9 @@ def setup(rank, timeout=timedelta(minutes=30)):
     os.environ["MASTER_ADDR"] = "localhost"
     os.environ["MASTER_PORT"] = args.port
 
-    dist.init_process_group("nccl", rank=rank, world_size=args.world_size, timeout=timeout)
-
     torch.cuda.set_device(rank)
+
+    dist.init_process_group("nccl", rank=rank, world_size=args.world_size, timeout=timeout)
 
 def check_inference(model, batch):
     try:

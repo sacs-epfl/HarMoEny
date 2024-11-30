@@ -80,6 +80,8 @@ class MoELayer(nn.Module):
         return self
     
     def prepare(self):
+        self.scheduler.prepare()
+
         self.start_pass = torch.cuda.Event(enable_timing=True)
         self.end_pass = torch.cuda.Event(enable_timing=True)
         self.start_metadata = torch.cuda.Event(enable_timing=True)
@@ -142,7 +144,7 @@ class MoELayer(nn.Module):
         
         # Create global schedule
         self.start_schedule.record()
-        schedule = self.scheduler(metadata_recv, self.expert_manager.get_cached())
+        schedule = self.scheduler(metadata_recv)
         self.end_schedule.record()
 
         # Turn schedule and hidden_states into array of tensors

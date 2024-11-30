@@ -13,7 +13,6 @@ class ExpertManager():
         self.cache_size = cache_size
         self.dynamic_components = dynamic_components
         self.fixed_cache = fixed_cache
-        # Cache can only hold up to cache_size
         self.reference_cache = list(map(lambda x: x[:cache_size], reference_cache)) if reference_cache else None 
         self.cache_policy = cache_policy
 
