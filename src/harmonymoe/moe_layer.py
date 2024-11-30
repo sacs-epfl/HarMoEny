@@ -38,6 +38,7 @@ class MoELayer(nn.Module):
 
         self.latencies = []
         self.metadata_latencies = []
+        self.schedule_latencies = []
         self.first_transfer_latencies = []
         self.second_transfer_latencies = []
         self.computation_latencies = []
@@ -83,6 +84,8 @@ class MoELayer(nn.Module):
         self.end_pass = torch.cuda.Event(enable_timing=True)
         self.start_metadata = torch.cuda.Event(enable_timing=True)
         self.end_metadata = torch.cuda.Event(enable_timing=True)
+        self.start_schedule = torch.cuda.Event(enable_timing=True)
+        self.end_schedule = torch.cuda.Event(enable_timing=True)
         self.start_first_transfer = torch.cuda.Event(enable_timing=True)
         self.end_first_transfer = torch.cuda.Event(enable_timing=True)
         self.start_computation = torch.cuda.Event(enable_timing=True)
@@ -96,6 +99,7 @@ class MoELayer(nn.Module):
             stats.append({
                 "latency (ms)": self.latencies[i],
                 "metadata latency (ms)": self.metadata_latencies[i] if i < len(self.metadata_latencies) else -1,
+                "schedule latency (ms)": self.schedule_latencies[i] if i < len(self.schedule_latencies) else -1,
                 "first transfer latency (ms)": self.first_transfer_latencies[i] if i < len(self.first_transfer_latencies) else -1,
                 "second transfer latency (ms)": self.second_transfer_latencies[i] if i < len(self.second_transfer_latencies) else -1,
                 "comp latency (ms)": self.computation_latencies[i] if i < len(self.computation_latencies) else -1,
@@ -137,7 +141,9 @@ class MoELayer(nn.Module):
         self.end_metadata.record()
         
         # Create global schedule
+        self.start_schedule.record()
         schedule = self.scheduler(metadata_recv, self.expert_manager.get_cached())
+        self.end_schedule.record()
 
         # Turn schedule and hidden_states into array of tensors
         # to distribute to each GPU
@@ -176,6 +182,7 @@ class MoELayer(nn.Module):
         # Collect data
         self.latencies.append(self.start_pass.elapsed_time(self.end_pass))
         self.metadata_latencies.append(self.start_metadata.elapsed_time(self.end_metadata))
+        self.schedule_latencies.append(self.start_schedule.elapsed_time(self.end_schedule))
         self.first_transfer_latencies.append(self.start_first_transfer.elapsed_time(self.end_first_transfer))
         self.computation_latencies.append(self.start_computation.elapsed_time(self.end_computation))
         self.second_transfer_latencies.append(self.start_second_transfer.elapsed_time(self.end_second_transfer))

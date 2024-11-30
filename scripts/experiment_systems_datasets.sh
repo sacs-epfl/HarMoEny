@@ -5,17 +5,17 @@ world_size=8
 num_experts=128
 
 cd ..
-########## COCKTAIL ############
-python3 src/start_harmony.py \
-    --dataset cocktail \
-    --num_samples $num_samples \
-    --batch_size 2500 \
-    --seq_len $seq_len \
-    --model_name "google/switch-base-$num_experts" \
-    --scheduling_policy "harmony" \
-    --expert_cache_size 16 \
-    --world_size $world_size \
-    --pa "$output_path/cocktail/harmony"
+# ########## COCKTAIL ############
+# python3 src/start_harmony.py \
+#     --dataset cocktail \
+#     --num_samples $num_samples \
+#     --batch_size 2500 \
+#     --seq_len $seq_len \
+#     --model_name "google/switch-base-$num_experts" \
+#     --scheduling_policy "harmony" \
+#     --expert_cache_size 16 \
+#     --world_size $world_size \
+#     --pa "$output_path/cocktail/harmony"
 
 # python3 src/start_harmony.py \
 #     --dataset cocktail \
@@ -47,14 +47,15 @@ python3 src/start_harmony.py \
 #     --world_size $world_size \
 #     --pa "$output_path/cocktail/fastermoe"
 
-# deepspeed --num_gpus $world_size src/start_deepspeed.py \
-#     --dataset cocktail \
-#     --num_samples $num_samples \
-#     --batch_size 1200 \
-#     --seq_len $seq_len \
-#     --num_experts $num_experts \
-#     --world_size $world_size \
-#     --pa "$output_path/cocktail/deepspeed"
+deepspeed --num_gpus $world_size src/start_deepspeed.py \
+    --dataset cocktail \
+    --num_samples $num_samples \
+    --batch_size 300 \
+    --seq_len $seq_len \
+    --num_experts $num_experts \
+    --world_size $world_size \
+    --capacity_factor 60.72 \
+    --pa "$output_path/cocktail/deepspeed"
 
 ########## SKEW95 ############
 # python3 src/start_harmony.py \
@@ -101,11 +102,12 @@ python3 src/start_harmony.py \
 # deepspeed --num_gpus $world_size src/start_deepspeed.py \
 #     --dataset skew95 \
 #     --num_samples $num_samples \
-#     --batch_size 300 \
+#     --batch_size 150 \
 #     --seq_len $seq_len \
 #     --capacity_factor 25.0 \
 #     --num_experts $num_experts \
 #     --world_size $world_size \
+#     --capacity_factor 77.34 \
 #     --pa "$output_path/skew95/deepspeed"
 
 
@@ -124,7 +126,7 @@ python3 src/start_harmony.py \
 # python3 src/start_harmony.py \
 #     --dataset skew50 \
 #     --num_samples $num_samples \
-#     --batch_size 700 \
+#     --batch_size 650 \
 #     --seq_len $seq_len \
 #     --model_name "google/switch-base-$num_experts" \
 #     --scheduling_policy "exflow" \
@@ -151,15 +153,16 @@ python3 src/start_harmony.py \
 #     --world_size $world_size \
 #     --pa "$output_path/skew50/fastermoe"
 
-# deepspeed --num_gpus $world_size src/start_deepspeed.py \
-#     --dataset skew50 \
-#     --num_samples $num_samples \
-#     --batch_size 650 \
-#     --seq_len $seq_len \
-#     --capacity_factor 25.0 \
-#     --num_experts $num_experts \
-#     --world_size $world_size \
-#     --pa "$output_path/skew50/deepspeed"
+deepspeed --num_gpus $world_size src/start_deepspeed.py \
+    --dataset skew50 \
+    --num_samples $num_samples \
+    --batch_size 175 \
+    --seq_len $seq_len \
+    --capacity_factor 25.0 \
+    --num_experts $num_experts \
+    --world_size $world_size \
+    --capacity_factor 75.08 \
+    --pa "$output_path/skew50/deepspeed"
 
 # ########## RANDOM ############
 # python3 src/start_harmony.py \
@@ -203,14 +206,15 @@ python3 src/start_harmony.py \
 #     --world_size $world_size \
 #     --pa "$output_path/random/fastermoe"
 
-# deepspeed --num_gpus $world_size src/start_deepspeed.py \
-#     --dataset random \
-#     --num_samples $num_samples \
-#     --batch_size 1300 \
-#     --seq_len $seq_len \
-#     --num_experts $num_experts \
-#     --world_size $world_size \
-#     --pa "$output_path/random/deepspeed"
+deepspeed --num_gpus $world_size src/start_deepspeed.py \
+    --dataset random \
+    --num_samples $num_samples \
+    --batch_size 300 \
+    --seq_len $seq_len \
+    --num_experts $num_experts \
+    --world_size $world_size \
+    --capacity_factor 64.31 \
+    --pa "$output_path/random/deepspeed"
 
 # ######## WIKITEXT ##############
 # python3 src/start_harmony.py \
@@ -254,14 +258,15 @@ python3 src/start_harmony.py \
 #     --world_size $world_size \
 #     --pa "$output_path/wikitext/fastermoe"
 
-# deepspeed --num_gpus $world_size src/start_deepspeed.py \
-#     --dataset wikitext \
-#     --num_samples $num_samples \
-#     --batch_size 1300 \
-#     --seq_len $seq_len \
-#     --num_experts $num_experts \
-#     --world_size $world_size \
-#     --pa "$output_path/wikitext/deepspeed"
+deepspeed --num_gpus $world_size src/start_deepspeed.py \
+    --dataset wikitext \
+    --num_samples $num_samples \
+    --batch_size 400 \
+    --seq_len $seq_len \
+    --num_experts $num_experts \
+    --world_size $world_size \
+    -capacity_factor 40.84 \
+    --pa "$output_path/wikitext/deepspeed"
 
 # ######## BOOKCORPUS ##############
 # python3 src/start_harmony.py \
@@ -305,14 +310,15 @@ python3 src/start_harmony.py \
 #     --world_size $world_size \
 #     --pa "$output_path/bookcorpus/fastermoe"
 
-# deepspeed --num_gpus $world_size src/start_deepspeed.py \
-#     --dataset bookcorpus \
-#     --num_samples $num_samples \
-#     --batch_size 1300 \
-#     --seq_len $seq_len \
-#     --num_experts $num_experts \
-#     --world_size $world_size \
-#     --pa "$output_path/bookcorpus/deepspeed"
+deepspeed --num_gpus $world_size src/start_deepspeed.py \
+    --dataset bookcorpus \
+    --num_samples $num_samples \
+    --batch_size 350 \
+    --seq_len $seq_len \
+    --num_experts $num_experts \
+    --world_size $world_size \
+    --capacity_factor 54.65 \
+    --pa "$output_path/bookcorpus/deepspeed"
 
 # ######## WMT19 ##############
 # python3 src/start_harmony.py \
@@ -356,11 +362,12 @@ python3 src/start_harmony.py \
 #     --world_size $world_size \
 #     --pa "$output_path/wmt19/fastermoe"
 
-# deepspeed --num_gpus $world_size src/start_deepspeed.py \
-#     --dataset wmt19 \
-#     --num_samples $num_samples \
-#     --batch_size 1300 \
-#     --seq_len $seq_len \
-#     --num_experts $num_experts \
-#     --world_size $world_size \
-#     --pa "$output_path/wmt19/deepspeed"
+deepspeed --num_gpus $world_size src/start_deepspeed.py \
+    --dataset wmt19 \
+    --num_samples $num_samples \
+    --batch_size 350 \
+    --seq_len $seq_len \
+    --num_experts $num_experts \
+    --world_size $world_size \
+    --capacity_factor 56.10 \
+    --pa "$output_path/wmt19/deepspeed"
