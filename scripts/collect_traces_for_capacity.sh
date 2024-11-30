@@ -4,11 +4,8 @@ policy="harmony"
 seq_len=120
 num_iters=5
 
-# batch_sizes=(1200 300 650 1200 1300 1300 1300) 
-# datasets=("cocktail" "skew95" "skew50" "random" "wikitext" "bookcorpus" "wmt19")
-
-batch_sizes=(1200 1300 1300 1300) 
-datasets=("random" "wikitext" "bookcorpus" "wmt19")
+batch_sizes=(1200 300 650 1200 1300 1300 1300) 
+datasets=("cocktail" "skew95" "skew50" "random" "wikitext" "bookcorpus" "wmt19")
 
 cd ..
 for i in {0..6}
