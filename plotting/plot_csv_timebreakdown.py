@@ -3,11 +3,19 @@ import pandas as pd
 from utils import save_plot
 import matplotlib.pyplot as plt
 
+# COLOUR_MAP = {
+#     "metadata latency (ms)": "#1f77b4", 
+#     "schedule latency (ms)": "#2ca02c",  
+#     "first transfer latency (ms)": "#9467bd", 
+#     "second transfer latency (ms)": "#ff7f0e",  
+#     "comp latency (ms)": "#d62728",  
+#     "wait latency (ms)": "#17becf",  
+#     "other latency (ms)": "#8b4513", 
+# }
+
 COLOUR_MAP = {
-    "metadata latency (ms)": "#1f77b4",  #
+    "communication latency (ms)": "#1f77b4", 
     "schedule latency (ms)": "#2ca02c",  
-    "first transfer latency (ms)": "#9467bd", 
-    "second transfer latency (ms)": "#ff7f0e",  
     "comp latency (ms)": "#d62728",  
     "wait latency (ms)": "#17becf",  
     "other latency (ms)": "#8b4513", 
@@ -23,6 +31,20 @@ path = sys.argv[1]
 df = pd.read_csv(path, index_col=0)
 
 df = df[df["layer"] == 4]
+
+
+############# COMBINING THE THREE COMMS ###########
+df["communication latency (ms)"] = (
+    df["first transfer latency (ms)"] + 
+    df["second transfer latency (ms)"] + 
+    df["metadata latency (ms)"]
+)
+
+df = df.drop(columns=["first transfer latency (ms)", "second transfer latency (ms)", "metadata latency (ms)"])
+
+columns = ["communication latency (ms)"] + [col for col in df.columns if col != "communication latency (ms)"]
+df = df[columns]
+####################################################
 
 num_ranks = df["rank"].max()+1
 
@@ -40,6 +62,7 @@ legend_wedges = None
 
 for rank in range(num_ranks):
     rank_data = df[df["rank"] == rank].iloc[0]
+    total_latency = rank_data["latency (ms)"]
     rank_data = rank_data.drop(["layer", "rank", "latency (ms)"])
     values = rank_data.tolist()
     component_labels = rank_data.index.tolist()
@@ -47,7 +70,7 @@ for rank in range(num_ranks):
     colors = [COLOUR_MAP.get(component, DEFAULT_COLOUR) for component in component_labels]
 
     wedges, _, _ = axes[rank].pie(values, autopct='%1.1f%%', startangle=90, colors=colors)
-    axes[rank].set_title(f"Rank {rank} Latency Breakdown")
+    axes[rank].set_title(f"Rank {rank} Latency Breakdown\nTotal Latency: {total_latency:.2f} ms")
 
     if legend_wedges is None:
         legend_wedges = wedges

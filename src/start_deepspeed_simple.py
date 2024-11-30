@@ -64,7 +64,7 @@ def run_inference_workload():
                         num_experts=128,
                         ep_size=args.world_size,
                         k=1,
-                        eval_capacity_factor=10.0,
+                        #eval_capacity_factor=54.65,
                         drop_tokens=False,
                         use_tutel=True,
                         top2_2nd_expert_sampling=False,
@@ -102,7 +102,7 @@ def run_inference_workload():
 
     dataset = load_dataset(
         "bookcorpus/bookcorpus", 
-        split=f"train[:3200]", 
+        split=f"train[:10400]", 
         streaming=False, 
         trust_remote_code=True, 
         cache_dir="/cache"
@@ -131,7 +131,7 @@ def run_inference_workload():
     loader = DataLoader(
         dataset, 
         sampler=sampler, 
-        batch_size=100,
+        batch_size=150,
         collate_fn=collate_fn,
     )
 

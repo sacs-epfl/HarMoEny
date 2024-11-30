@@ -14,7 +14,7 @@ for i in range(num_layers):
     for j in range(num_gpus):
         __df = pd.read_csv(f"{path}/{j}/moe_layer-{i}.csv")
         __df = __df.loc[:, __df.columns.str.contains(r"\(ms\)", regex=True)]
-        __df = __df.sum(axis=0)
+        __df = __df.mean(axis=0)
         __df["rank"] = j
 
         _df = pd.concat([_df, __df.to_frame().T], ignore_index=True)

@@ -45,9 +45,13 @@ class FlexibleDataset(Dataset):
         elif self.dataset_option.startswith("skew"):
             x = int(self.dataset_option.split("skew")[1])
             e = int((x * self.tokenizer.vocab_size - 100) / (100 - x))
-            self.distribution = [i for i in range(self.tokenizer.vocab_size)]
-            for _ in range(e):
-                self.distribution.append(0)
+            # self.distribution = [i for i in range(self.tokenizer.vocab_size)]
+            # for _ in range(e):
+            #     self.distribution.append(0)
+            self.distribution = torch.cat([
+                torch.arange(self.tokenizer.vocab_size),
+                torch.zeros(e, dtype=torch.long)
+            ])
             self.distribution_len = len(self.distribution)
         else:
             raise ValueError("Invalid dataset option")
@@ -117,14 +121,17 @@ class FlexibleDataset(Dataset):
         return encoder_tokenized
     
     def _generate_skewed_entry(self):
-        indices = torch.randint(0, self.distribution_len, (self.max_length,))
+        # indices = torch.randint(0, self.distribution_len, (self.max_length,))
 
-        text_encoded = torch.tensor(self.distribution)[indices]
+        # text_encoded = torch.tensor(self.distribution)[indices]
+
+        indices = torch.randint(0, self.distribution_len, (self.max_length,), device=self.distribution.device)
+        text_encoded = self.distribution[indices]
 
         encoder_tokenized = {
             "input_ids": text_encoded,
             "attention_mask": (text_encoded != self.tokenizer.pad_token_id).long(),
-            "decoder_input_ids": torch.tensor([self.tokenizer.pad_token_id])
+            "decoder_input_ids": torch.tensor([self.tokenizer.pad_token_id], device=self.distribution.device)
         }
 
         return encoder_tokenized
