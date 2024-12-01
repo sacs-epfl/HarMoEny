@@ -44,13 +44,13 @@ class Scheduler():
                     if len(expert_placement) <= layer_idx:
                         self.expert_to_gpu = self.generate_naive_expert_gpu_tensor()
                     else:
-                        # TODO need to fix the load system to work with this new approach
-                        self.expert_to_gpu = torch.tensor(expert_placement[layer_idx], dtype=torch.uint8)
+                        self.gpu_to_experts_list = expert_placement[layer_idx]
+                        self.expert_to_gpu = self.convert_gpu_to_experts_to_expert_gpu(self.gpu_to_experts_list)
             case _:
                 print("SCHEDULING POLICY NOT IMPLEMENTED")
                 exit(1)
 
-        if self.expert_to_gpu is not None:
+        if self.expert_to_gpu is not None and self.gpu_to_experts_list is None:
             self.gpu_to_experts_list = self.generate_expert_gpu_to_gpu_expert(self.expert_to_gpu)  
     
     def prepare(self):
@@ -205,6 +205,15 @@ class Scheduler():
         return [
             (expert_gpu == i).nonzero(as_tuple=False).flatten() for i in range(self.num_gpus)
         ]
+    
+    def convert_gpu_to_experts_to_expert_gpu(self, gpu_experts):
+        expert_gpu = torch.zeros(self.num_experts, dtype=torch.long)
+
+        for i in range(self.num_gpus):
+            for e in gpu_experts[i]:
+                expert_gpu[e] = i 
+        
+        return expert_gpu
 
     def schedule_drop(self, meta):
         schedule = [[[0 for _ in range(self.num_gpus)] for _ in range(self.num_experts)] for _ in range(self.num_gpus)]
@@ -231,7 +240,7 @@ class Scheduler():
 
         schedule[:, torch.arange(self.num_experts, device="cuda"), self.expert_to_gpu] = meta
 
-        return schedule
+        return schedule.tolist() # Need it to list for exflow
 
     def schedule_harmony(self, meta):
         schedule = self.schedule_fixed(meta)

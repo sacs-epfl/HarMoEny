@@ -16,16 +16,16 @@ deepspeed_capacity_factors=(10.0 10.0 25.0 30.0 35.0 37.5)
 cd ..
 for i in {0..5}
 do
-    python3 src/start_harmony.py \
-        --dataset ${datasets[i]} \
-        --num_samples $num_samples \
-        --batch_size ${harmony_batches[i]} \
-        --seq_len $seq_len \
-        --model_name "google/switch-base-$num_experts" \
-        --scheduling_policy "harmony" \
-        --expert_cache_size 16 \
-        --world_size $world_size \
-        --pa $output_path/${datasets[i]}/harmony
+    # python3 src/start_harmony.py \
+    #     --dataset ${datasets[i]} \
+    #     --num_samples $num_samples \
+    #     --batch_size ${harmony_batches[i]} \
+    #     --seq_len $seq_len \
+    #     --model_name "google/switch-base-$num_experts" \
+    #     --scheduling_policy "harmony" \
+    #     --expert_cache_size 16 \
+    #     --world_size $world_size \
+    #     --pa $output_path/${datasets[i]}/harmony
 
     python3 src/start_harmony.py \
         --dataset ${datasets[i]} \
@@ -39,32 +39,32 @@ do
         --expert_placement "ExFlow/placement/exp${num_experts}_gpu${world_size}.json" \
         --pa $output_path/${datasets[i]}/exflow
 
-    python3 src/start_fastmoe.py \
-        --dataset ${datasets[i]} \
-        --num_samples $num_samples \
-        --batch_size ${fastmoe_batches[i]} \
-        --seq_len $seq_len \
-        --num_experts $num_experts \
-        --world_size $world_size \
-        --pa $output_path/${datasets[i]}/fastmoe
+    # python3 src/start_fastmoe.py \
+    #     --dataset ${datasets[i]} \
+    #     --num_samples $num_samples \
+    #     --batch_size ${fastmoe_batches[i]} \
+    #     --seq_len $seq_len \
+    #     --num_experts $num_experts \
+    #     --world_size $world_size \
+    #     --pa $output_path/${datasets[i]}/fastmoe
 
-    python3 src/start_fastermoe.py \
-        --dataset ${datasets[i]} \
-        --num_samples $num_samples \
-        --batch_size ${fastermoe_batches[i]} \
-        --seq_len $seq_len \
-        --num_experts $num_experts \
-        --world_size $world_size \
-        --pa $output_path/${datasets[i]}/fastermoe
+    # python3 src/start_fastermoe.py \
+    #     --dataset ${datasets[i]} \
+    #     --num_samples $num_samples \
+    #     --batch_size ${fastermoe_batches[i]} \
+    #     --seq_len $seq_len \
+    #     --num_experts $num_experts \
+    #     --world_size $world_size \
+    #     --pa $output_path/${datasets[i]}/fastermoe
 
-    deepspeed --num_gpus $world_size src/start_deepspeed.py \
-        --dataset ${datasets[i]} \
-        --num_samples $num_samples \
-        --batch_size ${deepspeed_batches[i]} \
-        --seq_len $seq_len \
-        --num_experts $num_experts \
-        --world_size $world_size \
-        --capacity_factor ${deepspeed_capacity_factors[i]} \
-        --pa $output_path/${datasets[i]}/deepspeed
+    # deepspeed --num_gpus $world_size src/start_deepspeed.py \
+    #     --dataset ${datasets[i]} \
+    #     --num_samples $num_samples \
+    #     --batch_size ${deepspeed_batches[i]} \
+    #     --seq_len $seq_len \
+    #     --num_experts $num_experts \
+    #     --world_size $world_size \
+    #     --capacity_factor ${deepspeed_capacity_factors[i]} \
+    #     --pa $output_path/${datasets[i]}/deepspeed
 done
 

@@ -80,6 +80,7 @@ class MoELayer(nn.Module):
         return self
     
     def prepare(self):
+        self.rank = dist.get_rank()
         self.scheduler.prepare()
 
         self.start_pass = torch.cuda.Event(enable_timing=True)
