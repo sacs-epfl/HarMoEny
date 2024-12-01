@@ -126,12 +126,10 @@ class MoELayer(nn.Module):
         expert_index = torch.argmax(router_mask, dim=-1)
         router_mask = router_mask.bool()
 
-        num_toks_per_expert = []
-        num_toks_send = 0
-        for j in range(self.num_experts):
-            size = hidden_states[router_mask[:,:,j]].shape[0]
-            num_toks_per_expert.append(size)
-            num_toks_send += size
+        expert_indices = [router_mask[:,:,j].nonzero(as_tuple=True) for j in range(self.num_experts)]
+        
+        num_toks_per_expert = [expert_indices[j][0].shape[0] for j in range(self.num_experts)]
+        num_toks_send = sum(num_toks_per_expert)
         self.tot_num_toks_send.append(num_toks_send)
         self.expert_freqs.append(num_toks_per_expert)
         
@@ -150,7 +148,7 @@ class MoELayer(nn.Module):
 
         # Turn schedule and hidden_states into array of tensors
         # to distribute to each GPU
-        tokens_send, send_splits = self.scheduler.distribute_tokens(schedule, hidden_states, router_mask, num_toks_send)
+        tokens_send, send_splits = self.scheduler.distribute_tokens(schedule, hidden_states, expert_indices, num_toks_send)
         tokens_recv, recv_splits = self.scheduler.allocate_recv_tensors(schedule)
         self.tot_num_toks_recv.append(tokens_recv.shape[0])
 
@@ -178,7 +176,7 @@ class MoELayer(nn.Module):
         )
         self.end_second_transfer.record()
 
-        hidden_states = self.scheduler.gather_tokens(schedule, tokens_send, hidden_states, router_mask)
+        hidden_states = self.scheduler.gather_tokens(schedule, tokens_send, hidden_states, expert_indices)
 
         self.end_pass.record()
         self.end_pass.synchronize() # Will only have a single synchronize on the final event
