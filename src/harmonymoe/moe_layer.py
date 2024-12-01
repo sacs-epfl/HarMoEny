@@ -161,7 +161,8 @@ class MoELayer(nn.Module):
         )
         self.end_first_transfer.record()
 
-        expert_tokens = self.scheduler.group_experts(schedule, tokens_recv)
+        #expert_tokens = self.scheduler.group_experts(schedule, tokens_recv)
+        expert_mask = self.scheduler.generate_expert_mask(schedule)
         self.start_computation.record()
         expert_tokens = self.expert_manager(expert_tokens, schedule=schedule)
         self.end_computation.record()

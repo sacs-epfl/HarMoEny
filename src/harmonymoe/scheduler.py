@@ -252,13 +252,32 @@ class Scheduler():
         
     #     return expert_tokens
 
-    def group_experts(self, schedule, tokens: torch.Tensor):
-        rank = dist.get_rank()
+    # def group_experts(self, schedule: torch.Tensor, tokens: torch.Tensor):
+    #     num_toks_per_expert = [0 for _ in range(self.num_experts)]
+    #     for i in range(self.num_gpus):
+    #         for j in range(self.num_experts):
+    #             num_toks_per_expert[j] += schedule[i, j, self.rank].item()
 
+    #     expert_tokens = [torch.empty((num_toks_per_expert[j], self.d_model), device="cuda") for j in range(self.num_experts)]
+    #     experts_idx = [0 for _ in range(self.num_experts)]
+
+    #     tokens_idx = 0
+    #     for i in range(self.num_gpus):
+    #         for j in range(self.num_experts):
+    #             amount = schedule[i, j, self.rank].item()
+    #             if amount != 0:
+    #                 start = experts_idx[j]
+    #                 expert_tokens[j][start:start+amount] = tokens[tokens_idx:tokens_idx+amount]
+    #                 tokens_idx += amount
+    #                 experts_idx[j] += amount
+        
+    #     return expert_tokens
+
+    def group_experts(self, schedule: torch.Tensor, tokens: torch.Tensor):
         num_toks_per_expert = [0 for _ in range(self.num_experts)]
         for i in range(self.num_gpus):
             for j in range(self.num_experts):
-                num_toks_per_expert[j] += schedule[i, j, rank].item()
+                num_toks_per_expert[j] += schedule[i, j, self.rank].item()
 
         expert_tokens = [torch.empty((num_toks_per_expert[j], self.d_model), device="cuda") for j in range(self.num_experts)]
         experts_idx = [0 for _ in range(self.num_experts)]
@@ -266,7 +285,7 @@ class Scheduler():
         tokens_idx = 0
         for i in range(self.num_gpus):
             for j in range(self.num_experts):
-                amount = schedule[i, j, rank].item()
+                amount = schedule[i, j, self.rank].item()
                 if amount != 0:
                     start = experts_idx[j]
                     expert_tokens[j][start:start+amount] = tokens[tokens_idx:tokens_idx+amount]
@@ -274,6 +293,18 @@ class Scheduler():
                     experts_idx[j] += amount
         
         return expert_tokens
+    
+    def generate_expert_mask(self, schedule: torch.Tensor):
+        amounts = schedule[:, :, self.rank] # Shape (num_gpus, num_experts)
+        amounts_flat = amounts.flatten() # Shape (num_gpus * num_experts,)
+
+        if self.rank == 0:
+            print(amounts.tolist())
+            print(amounts_flat.tolist())
+        exit(0)
+
+
+
 
     ### OLD ### 
     # def ungroup_experts(self, schedule, expert_tokens: torch.Tensor, num_tokens):
