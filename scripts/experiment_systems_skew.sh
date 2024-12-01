@@ -7,7 +7,7 @@ num_experts=128
 
 datasets=("random" "skew25" "skew50" "skew75" "skew90" "skew95")
 harmony_batches=(2500 2500 2500 2500 2500 2500)
-exflow_batches=(1300 1200 650 550 450 400)
+exflow_batches=(1250 1100 625 550 450 400)
 fastmoe_batches=(1250 1100 625 550 450 400)
 fastermoe_batches=(1250 1100 625 550 450 400)
 deepspeed_batches=(1250 1100 625 550 450 400)

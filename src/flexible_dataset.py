@@ -45,9 +45,6 @@ class FlexibleDataset(Dataset):
         elif self.dataset_option.startswith("skew"):
             x = int(self.dataset_option.split("skew")[1])
             e = int((x * self.tokenizer.vocab_size - 100) / (100 - x))
-            # self.distribution = [i for i in range(self.tokenizer.vocab_size)]
-            # for _ in range(e):
-            #     self.distribution.append(0)
             self.distribution = torch.cat([
                 torch.arange(self.tokenizer.vocab_size),
                 torch.zeros(e, dtype=torch.long),
@@ -121,10 +118,6 @@ class FlexibleDataset(Dataset):
         return encoder_tokenized
     
     def _generate_skewed_entry(self):
-        # indices = torch.randint(0, self.distribution_len, (self.max_length,))
-
-        # text_encoded = torch.tensor(self.distribution)[indices]
-
         indices = torch.randint(0, self.distribution_len, (self.max_length,), device=self.distribution.device)
         text_encoded = self.distribution[indices]
 

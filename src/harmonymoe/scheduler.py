@@ -240,7 +240,7 @@ class Scheduler():
 
         schedule[:, torch.arange(self.num_experts, device="cuda"), self.expert_to_gpu] = meta
 
-        return schedule.tolist() # Need it to list for exflow
+        return schedule#.tolist() # Need it to list for exflow
 
     def schedule_harmony(self, meta):
         schedule = self.schedule_fixed(meta)

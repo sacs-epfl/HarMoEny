@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 # }
 
 COLOUR_MAP = {
-    "communication latency (ms)": "#1f77b4", 
+    "all_to_all communication latency (ms)": "#1f77b4", 
     "schedule latency (ms)": "#2ca02c",  
     "comp latency (ms)": "#d62728",  
     "wait latency (ms)": "#17becf",  
@@ -34,7 +34,7 @@ df = df[df["layer"] == 4]
 
 
 ############# COMBINING THE THREE COMMS ###########
-df["communication latency (ms)"] = (
+df["all_to_all communication latency (ms)"] = (
     df["first transfer latency (ms)"] + 
     df["second transfer latency (ms)"] + 
     df["metadata latency (ms)"]
@@ -42,7 +42,7 @@ df["communication latency (ms)"] = (
 
 df = df.drop(columns=["first transfer latency (ms)", "second transfer latency (ms)", "metadata latency (ms)"])
 
-columns = ["communication latency (ms)"] + [col for col in df.columns if col != "communication latency (ms)"]
+columns = ["all_to_all communication latency (ms)"] + [col for col in df.columns if col != "all_to_all communication latency (ms)"]
 df = df[columns]
 ####################################################
 
