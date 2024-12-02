@@ -191,6 +191,8 @@ class ExpertManager():
         for expert_idx in range(self.num_experts):
             if expert_mask[expert_idx].shape[0] == 0:
                 continue
+            # if len(expert_mask[expert_idx]) == 0:
+            #     continue
             
             num_execs += 1
             if self.is_expert_loaded(expert_idx):

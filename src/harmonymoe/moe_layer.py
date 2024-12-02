@@ -144,13 +144,15 @@ class MoELayer(nn.Module):
         # Create global schedule
         self.start_schedule.record()
         schedule = self.scheduler(metadata_recv)
+        schedule_list = schedule.tolist()
         self.end_schedule.record()
 
         # Turn schedule and hidden_states into array of tensors
         # to distribute to each GPU
-        tokens_send, send_splits = self.scheduler.distribute_tokens(schedule, hidden_states, expert_indices, num_toks_send)
+        tokens_send, send_splits = self.scheduler.distribute_tokens(schedule_list, hidden_states, expert_indices, num_toks_send)
         tokens_recv, recv_splits = self.scheduler.allocate_recv_tensors(schedule)
-        self.tot_num_toks_recv.append(tokens_recv.shape[0])
+        total_tokens = tokens_recv.shape[0]
+        self.tot_num_toks_recv.append(total_tokens)
 
         self.start_first_transfer.record()
         dist.all_to_all_single(
@@ -162,7 +164,7 @@ class MoELayer(nn.Module):
         self.end_first_transfer.record()
 
         #expert_tokens = self.scheduler.group_experts(schedule, tokens_recv)
-        expert_mask = self.scheduler.generate_expert_mask(schedule)
+        expert_mask = self.scheduler.generate_expert_mask(schedule, total_tokens)
         self.start_computation.record()
         #expert_tokens = self.expert_manager(tokens_recv, expert_mask, schedule=schedule)
         self.expert_manager(tokens_recv, expert_mask, schedule=schedule)
@@ -178,7 +180,7 @@ class MoELayer(nn.Module):
         )
         self.end_second_transfer.record()
 
-        hidden_states = self.scheduler.gather_tokens(schedule, tokens_send, hidden_states, expert_indices)
+        hidden_states = self.scheduler.gather_tokens(schedule_list, tokens_send, hidden_states, expert_indices)
 
         self.end_pass.record()
         self.end_pass.synchronize() # Will only have a single synchronize on the final event
