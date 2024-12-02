@@ -65,8 +65,8 @@ class ExpertManager():
 
         return self
 
-    def __call__(self, workload: list, schedule=None):
-        return self.executer(workload, schedule=schedule)
+    def __call__(self, tokens, expert_mask, schedule=None):
+        return self.executer(tokens, expert_mask, schedule=schedule)
         
     def load_cache(self, new_cache):
         new_rank_cache = new_cache[dist.get_rank()]
@@ -125,24 +125,71 @@ class ExpertManager():
     def is_expert_loaded(self, expert_idx):
         return expert_idx in self.cache[dist.get_rank()]
     
-    def direct_execute_job(self, workload: list, schedule=None):
-        sizes = list(map(lambda x: x.size(dim=0), workload))
-        experts_to_execute = list(filter(lambda e: sizes[e] != 0, range(self.num_experts)))
+    def direct_execute_job(self, tokens, expert_mask, schedule=None):
+        # sizes = list(map(lambda x: x.shape[0], expert_mask))
+        # experts_to_execute = list(filter(lambda e: sizes[e] != 0, range(self.num_experts)))
         for expert_idx in range(self.num_experts):
-            if workload[expert_idx].size(dim=0) == 0:
+            if expert_mask[expert_idx].shape[0] == 0:
                 continue
             slot_idx = self.expert_loaded_location(expert_idx)
-            workload[expert_idx] = self.cached_experts[slot_idx](workload[expert_idx])
+            tokens[expert_mask[expert_idx]] = self.cached_experts[slot_idx](tokens[expert_mask[expert_idx]])
         
-        return workload
+        return tokens
     
-    def execute_job(self, workload: list, schedule = None):
+    # def execute_job(self, workload: list, schedule = None):
+    #     expert_order = []
+    #     num_execs = 0
+
+    #     # Setup
+    #     for expert_idx in range(self.num_experts):
+    #         if workload[expert_idx].size(dim=0) == 0:
+    #             continue
+            
+    #         num_execs += 1
+    #         if self.is_expert_loaded(expert_idx):
+    #             expert_order.insert(0, expert_idx)
+    #         else:
+    #             expert_order.append(expert_idx)
+
+    #     unused_expert_slots = []
+    #     # Start loading as many experts as possible
+    #     for slot_idx, expert_idx in enumerate(self.cache[dist.get_rank()]):
+    #         if expert_idx is None:
+    #             next_expert_idx = self.next_not_loaded_expert(expert_order)
+    #             if next_expert_idx is None:
+    #                 break
+    #             self.load_expert(next_expert_idx, slot_idx)
+    #         elif expert_idx not in expert_order:
+    #             unused_expert_slots.append(slot_idx)
+       
+    #     # Fill every unused expert
+    #     for slot_idx in unused_expert_slots:
+    #         next_expert_idx = self.next_not_loaded_expert(expert_order)
+    #         if next_expert_idx == None:
+    #             break
+    #         self.load_expert(next_expert_idx, slot_idx)
+        
+    #     # Begin execution
+    #     for idx, expert_idx in enumerate(expert_order):
+    #         slot_idx = self.expert_loaded_location(expert_idx)
+    #         self.is_slot_loaded[slot_idx].record()
+    #         workload[expert_idx] = self.cached_experts[slot_idx](workload[expert_idx])
+    #         # Check if anything else needs loading
+    #         next_expert_idx = self.next_not_loaded_expert(expert_order, idx)
+    #         if next_expert_idx is not None:
+    #             self.load_expert(next_expert_idx, slot_idx)
+        
+    #     self.update_cache(schedule)
+        
+    #     return workload
+
+    def execute_job(self, tokens, expert_mask, schedule = None):
         expert_order = []
         num_execs = 0
 
         # Setup
         for expert_idx in range(self.num_experts):
-            if workload[expert_idx].size(dim=0) == 0:
+            if expert_mask[expert_idx].shape[0] == 0:
                 continue
             
             num_execs += 1
@@ -173,7 +220,8 @@ class ExpertManager():
         for idx, expert_idx in enumerate(expert_order):
             slot_idx = self.expert_loaded_location(expert_idx)
             self.is_slot_loaded[slot_idx].record()
-            workload[expert_idx] = self.cached_experts[slot_idx](workload[expert_idx])
+            #workload[expert_idx] = self.cached_experts[slot_idx](workload[expert_idx]) # TODO # TODO
+            tokens[expert_mask[expert_idx]] = self.cached_experts[slot_idx](tokens[expert_mask[expert_idx]])
             # Check if anything else needs loading
             next_expert_idx = self.next_not_loaded_expert(expert_order, idx)
             if next_expert_idx is not None:
@@ -181,7 +229,7 @@ class ExpertManager():
         
         self.update_cache(schedule)
         
-        return workload
+        return tokens
 
         
     def next_not_loaded_expert(self, experts, start=0):
