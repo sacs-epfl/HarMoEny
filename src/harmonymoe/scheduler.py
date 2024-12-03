@@ -55,7 +55,8 @@ class Scheduler():
     
     def prepare(self):
         self.rank = dist.get_rank()
-        self.expert_to_gpu.cuda()
+        if self.expert_to_gpu is not None:
+            self.expert_to_gpu.cuda()
     
     def get_fixed_assign(self):
         if self.is_fixed_placement:
@@ -99,7 +100,6 @@ class Scheduler():
         tokens = torch.empty((num_toks_send, self.d_model), device="cuda")
         tokens_idx = 0
         send_splits = []
-        rank = dist.get_rank()
 
         amount_expert_filled = [0] * self.num_experts
 
@@ -489,13 +489,13 @@ class Scheduler():
                     continue # We do not have work for this one
                 start_idx = 0
                 for k in range(self.num_gpus): # dest
-                    if j in self.deepspeed_assign[k]:
+                    if j in self.gpu_to_experts_list[k]:
                         if gpu_amt[k] < avg:
                             num_tokens_send = min(num_tokens, avg - gpu_amt[k])
                             schedule[i][j][k] = num_tokens_send
                             gpu_amt[k] += num_tokens_send
 
-        return schedule
+        return torch.tensor(schedule, dtype=torch.long, device="cuda")
     
     def schedule_fixed(self, meta):
         schedule = torch.zeros((self.num_gpus, self.num_experts, self.num_gpus), dtype=torch.int, device="cuda")
@@ -560,4 +560,12 @@ class Scheduler():
                         amt += 1
                     schedule[i][j][k] = amt 
         
-        return schedule
+        return torch.tensor(schedule, dtype=torch.long, device="cuda")
+    
+    # Do vectorised even_split at some point
+    # def schedule_even_split(self, meta):
+    #     schedule = torch.zeros((self.num_gpus, self.num_experts, self.num_gpus), dtype=torch.long, device="cuda")
+
+    #     for i in range(self.num_gpus):
+    #         expert_tokens = meta[i] # Shape (num_experts,)
+    #         to_each_gpu = expert_tokens

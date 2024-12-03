@@ -42,6 +42,8 @@ class FlexibleDataset(Dataset):
             self.dataset_lengths = [len(self.datasets[i]) for i in range(4)]
         elif self.dataset_option == "random":
             pass
+        elif self.dataset_option == "constant":
+            pass
         elif self.dataset_option.startswith("skew"):
             x = int(self.dataset_option.split("skew")[1])
             e = int((x * self.tokenizer.vocab_size - 100) / (100 - x))
@@ -79,6 +81,8 @@ class FlexibleDataset(Dataset):
             return self._generate_random_entry()
         elif self.dataset_option.startswith("skew"):
             return self._generate_skewed_entry()
+        elif self.dataset_option == "constant":
+            return self._generate_constant_entry()
 
         tokenized_text = self.tokenizer.encode(text, truncation=True, max_length=self.max_length, return_tensors="pt")
         if tokenized_text.size(1) < self.max_length:
@@ -108,6 +112,19 @@ class FlexibleDataset(Dataset):
     def _generate_random_entry(self):
 
         text_encoded = torch.randint(0, self.tokenizer.vocab_size, (self.max_length,))
+
+        encoder_tokenized = {
+            "input_ids": text_encoded,
+            "attention_mask": (text_encoded != self.tokenizer.pad_token_id).long(),
+            "decoder_input_ids": torch.tensor([self.tokenizer.pad_token_id])
+        }
+
+        return encoder_tokenized
+    
+    def _generate_constant_entry(self):
+        # 8774 is 'hello' in t5 tokenizer. Will be something else for other things.
+        text_encoded = torch.full((self.max_length,), 8774)
+        text_encoded[-1] = self.tokenizer.eos_token_id 
 
         encoder_tokenized = {
             "input_ids": text_encoded,

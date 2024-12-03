@@ -3,19 +3,20 @@ from copy import deepcopy
 
 from .moe_layer import MoELayer
 
-def replace_moe_layer(model, moe_parent_type, moe_type, router_name, shared_experts, config):
-    _replace_moe_layer(model, moe_parent_type, moe_type, [0], router_name, shared_experts, config)
+def replace_moe_layer(model, moe_parent_type, moe_type, router_name, shared_experts, config, router=None):
+    _replace_moe_layer(model, moe_parent_type, moe_type, [0], router_name, shared_experts, config, router=router)
 
-    # return get_moe_layers([], model, target)
-
-def _replace_moe_layer(model, moe_parent_type, moe_type, layer_idx, router_name, shared_experts, config):
+def _replace_moe_layer(model, moe_parent_type, moe_type, layer_idx, router_name, shared_experts, config, router=None):
     if type(model).__name__ == moe_parent_type:
         for child_name, child in model.named_children():
             if type(child).__name__ == moe_type:
-                router = getattr(child, router_name)
+                if router == None:
+                    local_router = getattr(child, router_name)
+                else:
+                    local_router = router()
                 config.layer_idx = layer_idx[0]
                 layer_idx[0] += 1
-                new_moe_layer = MoELayer(router, shared_experts[config.layer_idx], config)
+                new_moe_layer = MoELayer(local_router, shared_experts[config.layer_idx], config)
 
                 setattr(model, child_name, new_moe_layer)
     else:
@@ -28,30 +29,8 @@ def _replace_moe_layer(model, moe_parent_type, moe_type, layer_idx, router_name,
                 router_name,
                 shared_experts,
                 config,
+                router=router,
             )
-
-
-    # for name, module in model.named_children():
-    #     # Need to do this to update the MoE reference
-    #     for child_name, child in module.named_children():
-    #         if type(child).__name__ == target:
-    #             router = getattr(child, router_name)
-    #             config.layer_idx = layer_idx[0]
-    #             layer_idx[0] += 1
-    #             new_moe_layer = MoELayer(router, shared_experts, config)
-
-    #             setattr(module, child_name, new_moe_layer)
-    #         else:
-    #             _replace_moe_layer(
-    #                 child, 
-    #                 target, 
-    #                 is_decoder,
-    #                 layer_idx,
-    #                 router_name, 
-    #                 experts_name,
-    #                 decoder_name,
-    #                 config,
-    #             )  
 
 def get_moe_layers(model):
     return _get_moe_layers([], model)

@@ -23,7 +23,9 @@ from transformers import AutoTokenizer, AutoModel
 from flexible_dataset import FlexibleDataset
 import argparse 
 
+from fmoe.gates.naive_gate import NaiveGate
 from fmoe.layers import FMoE
+from router import Router 
 from utils import TimedModule, get_timing_modules
 
 parser = argparse.ArgumentParser(
@@ -38,6 +40,7 @@ parser.add_argument("--num_experts", default=8, type=int, help="Number of expert
 parser.add_argument("--world_size", default=torch.cuda.device_count(), type=int, help="Number of GPUs to use")
 parser.add_argument("--port", default="1234", type=str)
 parser.add_argument("--warmup_rounds", default=3, type=int)
+parser.add_argument("--router_skew", default=0.0, type=float, help="Value between 0 and 1")
 args = parser.parse_args()
 
 
@@ -98,6 +101,18 @@ def run_inference_workload(rank):
                 output = self.child(x)  # FMoE expects input of shape [tokens, d_model]
                 output = output.reshape(batch_size, seq_len, d_model)
                 return output
+        
+        class RouterWrapper(Router):
+            def __init__(self, d_model, num_expert, world_size, top_k=2, gate_bias=True):
+                super().__init__(args.num_experts, skew=args.router_skew)
+                self.d_model = d_model
+            
+            def forward(self, x):
+                router_mask, router_probs, router_logits = super().forward(x)
+                gate_top_k_idx = torch.argmax(router_mask, dim=-1).unsqueeze(1)
+                gate_score = router_probs
+
+                return gate_top_k_idx, gate_score
 
         # Update to add FMoE to it
         def add_fmoe_model(module, idx):
@@ -120,6 +135,7 @@ def run_inference_workload(rank):
                             top_k=1,
                             expert=[lambda _, e=e: ExpertWrapper(e) for e in experts],
                             moe_group=moe_group,
+                            gate=RouterWrapper,
                         )
 
                         with torch.no_grad():

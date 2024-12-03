@@ -18,7 +18,7 @@
 #         --batch_size $batch_size \
 #         --path "outputs/harmony/run"
 
-dataset=skew90
+dataset=constant
 num_samples=200000
 num_experts=128
 num_gpus=8

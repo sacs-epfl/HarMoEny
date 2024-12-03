@@ -129,8 +129,6 @@ class MoELayer(nn.Module):
         expert_indices = [router_mask[:,:,j].nonzero(as_tuple=True) for j in range(self.num_experts)]
         
         num_toks_per_expert = [expert_indices[j][0].shape[0] for j in range(self.num_experts)]
-        num_toks_send = sum(num_toks_per_expert)
-        self.tot_num_toks_send.append(num_toks_send)
         self.expert_freqs.append(num_toks_per_expert)
         
         metadata_send = torch.tensor([num_toks_per_expert] * self.num_gpus, dtype=torch.int, device="cuda")
@@ -146,6 +144,9 @@ class MoELayer(nn.Module):
         schedule = self.scheduler(metadata_recv)
         schedule_list = schedule.tolist()
         self.end_schedule.record()
+
+        num_toks_send = schedule[self.rank].sum()
+        self.tot_num_toks_send.append(num_toks_send)
 
         # Turn schedule and hidden_states into array of tensors
         # to distribute to each GPU

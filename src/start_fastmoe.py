@@ -25,7 +25,9 @@ from transformers import AutoTokenizer, AutoModel
 from flexible_dataset import FlexibleDataset
 import argparse 
 
+from fmoe.gates.naive_gate import NaiveGate
 from fmoe.layers import FMoE
+from router import Router 
 
 #from fastmoe.fmoe.layers import FMoE
 #from fastmoe.fmoe.gates import SwitchGate
@@ -43,6 +45,7 @@ parser.add_argument("--num_experts", default=8, type=int, help="Number of expert
 parser.add_argument("--world_size", default=torch.cuda.device_count(), type=int, help="Number of GPUs to use")
 parser.add_argument("--port", default="1234", type=str)
 parser.add_argument("--warmup_rounds", default=3, type=int)
+parser.add_argument("--router_skew", default=0.0, type=float, help="Value between 0 and 1")
 args = parser.parse_args()
 
 
@@ -92,16 +95,28 @@ def run_inference_workload(rank):
                 output = self.child(x)  # FMoE expects input of shape [tokens, d_model]
                 output = output.reshape(batch_size, seq_len, d_model)
                 return output
-        
-        # class RouterWrapper(nn.Module):
-        #     def __init__(self, router):
-        #         super().__init__()
-        #         self.router = router
 
-        #     def forward(self, x):
-        #         x = self.router(x)
-        #         print(f"[rank:{dist.get_rank()}_gate_output] {torch.bincount(x[0].view(-1).cpu()).view(-1, args.num_experts // args.world_size).sum(dim=1)}")
-        #         return x
+        class RouterWrapper(Router):
+            def __init__(self, d_model, num_expert, world_size, top_k=2, gate_bias=True):
+                super().__init__(args.num_experts, skew=args.router_skew)
+                self.d_model = d_model
+            
+            def forward(self, x):
+                router_mask, router_probs, router_logits = super().forward(x)
+                gate_top_k_idx = torch.argmax(router_mask, dim=-1).unsqueeze(1)
+                gate_score = router_probs
+
+                return gate_top_k_idx, gate_score
+
+        class NaiveRouterWrapper(NaiveGate):
+            def __init__(self, d_model, num_expert, world_size, top_k=2, gate_bias=True):
+                super().__init__(d_model, num_expert, world_size, top_k=top_k, gate_bias=gate_bias)
+            
+            def forward(self, x):
+                gate_top_k_idx, gate_score = super().forward(x)
+                print(f"Top_k_idx: {gate_top_k_idx.shape}")
+                print(f"Score: {gate_score.shape}")
+                exit(0)
 
         # Update to add FMoE to it
         def add_fmoe_model(module, idx):
@@ -123,16 +138,12 @@ def run_inference_workload(rank):
                             world_size=args.world_size,
                             top_k=1,
                             expert=[lambda _, e=e: ExpertWrapper(e) for e in experts],
-                            #gate=SwitchGate,
+                            gate=RouterWrapper,
+                            #gate=NaiveRouterWrapper,
                         )
 
-                        #new.gate.capacity = (10.0, 10.0)
-                        with torch.no_grad():
-                            new.gate.gate.weight.copy_(router.classifier.weight)
-
-                        #new.gate = RouterWrapper(new.gate)
-                        # print(new.gate.capacity)
-                        # exit(0)
+                        # with torch.no_grad():
+                        #     new.gate.gate.weight.copy_(router.classifier.weight)
                         
                         setattr(module, child_name, TimedModule(FMoEWrapper(new), idx=idx[0]))
                         idx[0] += 1

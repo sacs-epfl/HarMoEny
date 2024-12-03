@@ -30,6 +30,7 @@ from flexible_dataset import FlexibleDataset
 
 from harmonymoe.utils import replace_moe_layer, get_moe_experts, get_moe_layers
 from harmonymoe.moe_layer import MoEConfig, MoELayer
+from router import Router
 
 def str2bool(s):
         return s.lower() in ["yes", "y", "true", "t"]
@@ -60,6 +61,7 @@ parser.add_argument("--port", default="1234", type=str)
 parser.add_argument("--warmup_rounds", default=3, type=int)
 parser.add_argument("--path", default="outputs/harmony", type=str)
 parser.add_argument("--expert_placement", default=None, type=str)
+parser.add_argument("--router_skew", default=0.0, type=float, help="Value between 0 and 1")
 args = parser.parse_args()
 
 ############# GLOBAL AFFAIRS ################
@@ -307,6 +309,7 @@ if __name__ == "__main__":
         args.name_router, 
         experts,
         config,
+        router=lambda: Router(model.config.num_experts, skew=args.router_skew),
     )
     
     if args.batch_size == None:
