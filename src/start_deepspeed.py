@@ -24,7 +24,12 @@ import argparse
 from utils import TimedModule, get_timing_modules
 from transformers.models.switch_transformers.modeling_switch_transformers import SwitchTransformersBlock, SwitchTransformersLayerSelfAttention, SwitchTransformersLayerCrossAttention
 
+from router import Router
+
 import deepspeed
+from deepspeed.moe.sharded_moe import top1gating, top2gating, topkgating
+from deepspeed.utils.timer import SynchronizedWallClockTimer
+from typing import Callable, Dict, TYPE_CHECKING, Any, Optional, Tuple, Union
 
 parser = argparse.ArgumentParser(
     prog="Run inference on DeepSpeed-MoE inference engine",
@@ -39,6 +44,7 @@ parser.add_argument("--warmup_rounds", default=3, type=int)
 parser.add_argument("--local_rank", default=0, type=int) 
 parser.add_argument("--world_size", default=8, type=int)
 parser.add_argument("--capacity_factor", default=10.0, type=float)
+parser.add_argument("--router_skew", default=0.0, type=float, help="Value between 0 and 1")
 args = parser.parse_args()
 
 
@@ -71,6 +77,94 @@ def run_inference_workload():
             x = self.child(x)
             return x[0], (x[1], x[2])
 
+    class TopKGate(nn.Module):
+        """Gate module which implements Top2Gating as described in Gshard_.
+        ::
+
+            gate = TopKGate(model_dim, num_experts)
+            l_aux, combine_weights, dispatch_mask = gate(input)
+
+        .. Gshard_: https://arxiv.org/pdf/2006.16668.pdf
+
+        Args:
+            model_dim (int):
+                size of model embedding dimension
+            num_experts (int):
+                number of experts in model
+        """
+
+        wg: torch.nn.Linear
+
+        def __init__(self,
+                    model_dim: int,
+                    num_experts: int,
+                    k: int = 1,
+                    capacity_factor: float = 1.0,
+                    eval_capacity_factor: float = 1.0,
+                    min_capacity: int = 8,
+                    noisy_gate_policy: Optional[str] = None,
+                    drop_tokens: bool = True,
+                    use_rts: bool = True,
+                    ep_group: Union[torch.distributed.ProcessGroup, None] = None,
+                    top2_2nd_expert_sampling: bool = True) -> None:
+            super().__init__()
+
+            self.wg = torch.nn.Linear(model_dim, num_experts, bias=False)
+            self.ep_group = ep_group
+            self.k = k
+            self.capacity_factor = capacity_factor
+            self.eval_capacity_factor = eval_capacity_factor
+            self.min_capacity = min_capacity
+            self.noisy_gate_policy = noisy_gate_policy
+            self.timers = SynchronizedWallClockTimer()
+            self.wall_clock_breakdown = False
+            self.gate_time = 0.0
+            self.drop_tokens = drop_tokens
+            self.use_rts = use_rts
+            self.top2_2nd_expert_sampling = top2_2nd_expert_sampling
+            # Here is the update by adding my own router I can change the logits
+            # I want to do this before the chaos that comes after which I cannot rewrite
+            self.router = Router(args.num_experts, skew=args.router_skew) 
+
+        def _set_ep_group(self, ep_group):
+            assert self.ep_group is None, f'Attempting to override an existing ep_group'
+            self.ep_group = ep_group
+
+        def forward(self,
+                    input: torch.Tensor,
+                    used_token: torch.Tensor = None,
+                    use_tutel: bool = False) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:  # type: ignore
+
+            if self.wall_clock_breakdown:
+                self.timers(TOPK_GATE_TIMER).start()
+
+            input_fp32 = input.float()
+            # input jittering
+            if self.noisy_gate_policy == 'Jitter' and self.training:
+                input_fp32 = multiplicative_jitter(input_fp32, device=input.device)
+            #logits = torch.nn.functional.linear(input_fp32, weight=self.wg.weight.float(), bias=None)
+            _, _, logits = self.router(input_fp32)
+
+            if self.k == 1:
+                gate_output = top1gating(logits, self.capacity_factor if self.training else self.eval_capacity_factor,
+                                        self.min_capacity, used_token, self.noisy_gate_policy if self.training else None,
+                                        self.drop_tokens, self.use_rts, self.ep_group, use_tutel)
+
+            elif self.k == 2:
+                gate_output = top2gating(logits, self.capacity_factor if self.training else self.eval_capacity_factor,
+                                        self.min_capacity, self.drop_tokens, self.ep_group, self.top2_2nd_expert_sampling)
+            else:
+                gate_output = topkgating(logits, self.k,
+                                        self.capacity_factor if self.training else self.eval_capacity_factor,
+                                        self.min_capacity, self.drop_tokens, self.ep_group)
+
+            if self.wall_clock_breakdown:
+                self.timers(TOPK_GATE_TIMER).stop()
+                self.gate_time = self.timers(TOPK_GATE_TIMER).elapsed(reset=False)
+
+            return gate_output
+
+
     # Update to add DeepspeedMoE to it
     def add_deepspeed_moe_model(module, idx):
         if type(module).__name__ == "SwitchTransformersLayerFF":
@@ -98,8 +192,14 @@ def run_inference_workload():
                         use_rts=False,
                     )
 
+                    # Change gate
+                    setattr(new.deepspeed_moe, "gate", TopKGate(
+                        768, args.num_experts, 1, 1.0, args.capacity_factor,
+                        4, None, True, False, None, False
+                    ))
+
                     with torch.no_grad():
-                        new.deepspeed_moe.gate.wg.weight.copy_(router.classifier.weight)
+                        # new.deepspeed_moe.gate.wg.weight.copy_(router.classifier.weight)
                         for i in range(len(experts)):
                             new.deepspeed_moe.experts.deepspeed_experts[i].wi.weight.copy_(experts[i].wi.weight)
                             new.deepspeed_moe.experts.deepspeed_experts[i].wo.weight.copy_(experts[i].wo.weight)

@@ -9,4 +9,5 @@ python3 src/start_fastmoe.py \
         --seq_len 120 \
         --world_size 8 \
         --num_experts 128 \
+        --router_skew 0.5 \
         --path "outputs/fastmoe"

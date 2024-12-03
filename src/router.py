@@ -30,8 +30,3 @@ class Router(nn.Module):
             router_probabilities = torch.ones((x.shape[0], 1), dtype=x.dtype, device=x.device)
 
         return one_hot_experts, router_probabilities, one_hot_experts
-
-
-        # # Test
-        # self.forward(torch.tensor([[[1,3,4], [5,6,9], [3,4,2], [1,2,4], [1,2,4], [6,5,3]]]))
-        # exit(0)
