@@ -40,3 +40,6 @@ class Data():
     def read_meta(self, path):
         with open(f"{self.most_recent_folder}/{path}/data.json", "r") as f:
             return json.load(f)
+    
+    def exists(self, name):
+        return os.path.exists(f"{self.most_recent_folder}/{name}")

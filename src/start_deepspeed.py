@@ -313,6 +313,8 @@ def run_standard_experiment(ds_engine, loader):
                 decoder_input_ids=batch["decoder_input_ids"],
             )
             end = time.time()
+            if args.local_rank == 0:
+                print(end-start)
             latencies.append(end-start)
         run_end = time.time()
     
