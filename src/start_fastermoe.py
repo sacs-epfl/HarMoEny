@@ -138,8 +138,8 @@ def run_inference_workload(rank):
                             gate=RouterWrapper,
                         )
 
-                        with torch.no_grad():
-                            new.gate.gate.weight.copy_(router.classifier.weight)
+                        # with torch.no_grad():
+                        #     new.gate.gate.weight.copy_(router.classifier.weight)
                         
                         setattr(module, child_name, TimedModule(FMoEWrapper(new), idx=idx[0]))
                         idx[0] += 1
