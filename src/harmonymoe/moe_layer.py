@@ -119,10 +119,8 @@ class MoELayer(nn.Module):
     def forward(self, hidden_states):
         self.start_pass.record()
 
-        #original_shape = hidden_states.shape
-        #hidden_states = hidden_states.view(-1, self.d_model)
         router_mask, router_probs, router_logits = self.router(hidden_states)
-        # router_mask has dim (num_tokens, num_experts)
+        # router_mask has dim (batch_size, seq_len, num_experts)
         # Entry will be a 1 on which expert to work on for the specific token
         # at specific sequence index on specific sample, rest will be 0
         
@@ -130,10 +128,6 @@ class MoELayer(nn.Module):
         router_mask = router_mask.bool()
 
         expert_indices = [router_mask[:,:,j].nonzero(as_tuple=True) for j in range(self.num_experts)]
-        #expert_indices = [router_mask[:,j].nonzero().squeeze(1) for j in range(self.num_experts)]
-        # if self.rank == 0:
-        #     print(list(map(lambda x: x.shape, expert_indices)))
-        #num_toks_per_expert = [expert_indices[j].shape[0] for j in range(self.num_experts)]
 
         num_toks_per_expert = [expert_indices[j][0].shape[0] for j in range(self.num_experts)]
         self.expert_freqs.append(num_toks_per_expert)
@@ -155,14 +149,8 @@ class MoELayer(nn.Module):
         num_toks_send = schedule[self.rank].sum()
         self.tot_num_toks_send.append(num_toks_send)
 
-        # Turn schedule and hidden_states into array of tensors
-        # to distribute to each GPU
-        #tokens_send, send_splits = self.scheduler.distribute_tokens(schedule_list, hidden_states, expert_indices, num_toks_send)
-
         # If dropping need a way to make update hidden_states passed to distrbute_tokens
         tokens_send, send_splits = self.scheduler.distribute_tokens(schedule_list, hidden_states, expert_indices, num_toks_send)
-       # distribution_mask, send_splits = self.scheduler.generate_distribution_mask(schedule, expert_indices, num_toks_send)
-        #tokens_send = hidden_states[distribution_mask]
         tokens_recv, recv_splits = self.scheduler.allocate_recv_tensors(schedule)
         total_tokens = tokens_recv.shape[0]
         self.tot_num_toks_recv.append(total_tokens)
@@ -176,13 +164,10 @@ class MoELayer(nn.Module):
         )
         self.end_first_transfer.record()
 
-        #expert_tokens = self.scheduler.group_experts(schedule, tokens_recv)
         expert_mask = self.scheduler.generate_expert_mask(schedule, total_tokens)
         self.start_computation.record()
-        #expert_tokens = self.expert_manager(tokens_recv, expert_mask, schedule=schedule)
         self.expert_manager(tokens_recv, expert_mask, schedule=schedule)
         self.end_computation.record()
-        #tokens_recv = self.scheduler.ungroup_experts(schedule, expert_tokens, tokens_recv.shape[0])
 
         self.start_second_transfer.record()
         dist.all_to_all_single(
@@ -194,7 +179,6 @@ class MoELayer(nn.Module):
         self.end_second_transfer.record()
 
         hidden_states = self.scheduler.gather_tokens(schedule_list, tokens_send, hidden_states, expert_indices)
-        #hidden_states[distribution_mask] = tokens_send
 
         self.end_pass.record()
         self.end_pass.synchronize() # Will only have a single synchronize on the final event
@@ -207,5 +191,4 @@ class MoELayer(nn.Module):
         self.second_transfer_latencies.append(self.start_second_transfer.elapsed_time(self.end_second_transfer))
 
         hidden_states = router_probs * hidden_states
-        #hidden_states = hidden_states.view(original_shape)
         return hidden_states, (router_logits, expert_index)
