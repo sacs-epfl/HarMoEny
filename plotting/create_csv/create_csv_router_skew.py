@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import ast
 import os
+import json
 
 directory_path = "../data/systems/router_skew"
 data = Data(directory_path)
@@ -42,5 +43,17 @@ def create_workload_duration_policy_vs_dataset():
 
     save_pd(pd.DataFrame(df), "../data_processed/systems/router_skew/workload_duration_policy_vs_dataset.csv")
 
+
+def create_workload_average_gpu_use():
+    df = []
+    for sys in systems:
+        for skew in skews:
+            path = f"{skew}/{sys}/stats.csv"
+            _df = data.load(path)
+            print(_df)
+            exit(0)
+
+
 if __name__ == "__main__":
-    create_workload_duration_policy_vs_dataset()
+    #create_workload_duration_policy_vs_dataset()
+    create_workload_average_gpu_use()

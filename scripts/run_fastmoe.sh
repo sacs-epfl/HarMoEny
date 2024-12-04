@@ -1,5 +1,5 @@
 dataset=constant
-num_samples=320000
+num_samples=200000
 
 cd ..
 python3 src/start_fastmoe.py \
@@ -9,5 +9,5 @@ python3 src/start_fastmoe.py \
         --seq_len 120 \
         --world_size 8 \
         --num_experts 128 \
-        --router_skew 0.5 \
-        --path "outputs/fastmoe"
+        --random_router_skew True \
+        --path "outputs/fastmoe/run"

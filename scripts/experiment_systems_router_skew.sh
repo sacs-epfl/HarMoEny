@@ -25,6 +25,7 @@ do
         --scheduling_policy "harmony" \
         --expert_cache_size 16 \
         --world_size $world_size \
+        --enable_router_skew True \
         --router_skew ${skews[i]} \
         --pa $output_path/${skews[i]}/harmony
 
@@ -38,6 +39,7 @@ do
         --expert_cache_size 16 \
         --world_size $world_size \
         --expert_placement "ExFlow/placement/exp${num_experts}_gpu${world_size}.json" \
+        --enable_router_skew True \
         --router_skew ${skews[i]} \
         --pa $output_path/${skews[i]}/exflow
 

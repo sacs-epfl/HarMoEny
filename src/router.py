@@ -1,14 +1,22 @@
 import torch.nn as nn 
 import torch
+import random
 
 class Router(nn.Module):
-    def __init__(self, num_experts, skew=0):
+    def __init__(self, num_experts, skew=0, enable_random=False):
         super().__init__()
         self.num_experts = num_experts
         self.skew = skew
+        self.random_gen = None
+        self.enable_random = enable_random
+        if self.enable_random:
+            self.random_gen = random.Random(232)
+
     
     def forward(self, x):
         prob = torch.full((self.num_experts,), 1.0 / self.num_experts, device=x.device)
+        if self.enable_random:
+            self.skew = self.random_gen.uniform(0, 0.5)
         if self.skew > 0:
             prob[0] += self.skew
             prob = prob / prob.sum()

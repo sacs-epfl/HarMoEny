@@ -33,6 +33,9 @@ from router import Router
 #from fastmoe.fmoe.gates import SwitchGate
 from utils import TimedModule, get_timing_modules
 
+def str2bool(s):
+        return s.lower() in ["yes", "y", "true", "t"]
+
 parser = argparse.ArgumentParser(
     prog="Run inference on FastMoE",
 )
@@ -46,6 +49,7 @@ parser.add_argument("--world_size", default=torch.cuda.device_count(), type=int,
 parser.add_argument("--port", default="1234", type=str)
 parser.add_argument("--warmup_rounds", default=3, type=int)
 parser.add_argument("--router_skew", default=0.0, type=float, help="Value between 0 and 1")
+parser.add_argument("--random_router_skew", default=False, type=str2bool, help="Wether to enable random skewing in the router")
 args = parser.parse_args()
 
 
@@ -98,7 +102,7 @@ def run_inference_workload(rank):
 
         class RouterWrapper(Router):
             def __init__(self, d_model, num_expert, world_size, top_k=2, gate_bias=True):
-                super().__init__(args.num_experts, skew=args.router_skew)
+                super().__init__(args.num_experts, skew=args.router_skew, enable_random=args.random_router_skew)
                 self.d_model = d_model
             
             def forward(self, x):

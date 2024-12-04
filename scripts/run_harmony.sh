@@ -20,7 +20,7 @@
 
 dataset=constant
 num_samples=200000
-num_experts=128
+num_experts=8
 num_gpus=8
 policy="harmony"
 seq_len=120
@@ -36,4 +36,6 @@ python3 src/start_harmony.py \
         --expert_cache_size $(($num_experts / $num_gpus)) \
         --world_size $num_gpus \
         --batch_size $batch_size \
+        --enable_router_skew True \
+        --router_skew 0.0 \
         --path "outputs/harmony/run"

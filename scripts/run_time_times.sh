@@ -1,4 +1,4 @@
-dataset=skew50
+dataset=constant
 num_samples=200000
 num_experts=128
 num_gpus=8
@@ -14,6 +14,8 @@ cd ..
 #         --expert_cache_size $(($num_experts / $num_gpus)) \
 #         --world_size $num_gpus \
 #         --batch_size 1000 \
+#         --enable_router_skew True \
+#         --router_skew 0.5 \
 #         --path "outputs/timetime/deepspeed"
 
 python3 src/start_harmony.py \
@@ -25,6 +27,8 @@ python3 src/start_harmony.py \
         --expert_cache_size $(($num_experts / $num_gpus)) \
         --world_size $num_gpus \
         --batch_size 2500 \
+        --enable_router_skew True \
+        --router_skew 0.5 \
         --path "outputs/timetime/harmony"
 
 

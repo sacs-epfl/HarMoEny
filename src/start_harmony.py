@@ -61,7 +61,9 @@ parser.add_argument("--port", default="1234", type=str)
 parser.add_argument("--warmup_rounds", default=3, type=int)
 parser.add_argument("--path", default="outputs/harmony", type=str)
 parser.add_argument("--expert_placement", default=None, type=str)
+parser.add_argument("--enable_router_skew", default=False, type=str2bool)
 parser.add_argument("--router_skew", default=0.0, type=float, help="Value between 0 and 1")
+parser.add_argument("--random_router_skew", default=False, type=str2bool, help="Wether to enable random skewing in the router")
 args = parser.parse_args()
 
 ############# GLOBAL AFFAIRS ################
@@ -119,37 +121,6 @@ def compute_batch_size(model, dataset, sampler):
             batch = test
         else:
             return batch
-
-def find_batch_size(rank, model, batch_sizes):
-    mp.current_process().name = f'Worker-{rank}'
-    setup(rank, timeout=timedelta(seconds=60))
-    os.environ["TORCH_NCCL_ASYNC_ERROR_HANDLING"] = "2"
-    os.environ["NCCL_ASYNC_ERROR_HANDLING"] = "2"
-    #os.environ["TORCH_NCCL_DUMP_ON_TIMEOUT"] = "0"
-
-    model.cuda()
-    model.eval()
-
-    tokenizer = AutoTokenizer.from_pretrained(args.model_name, cache_dir="/cache")
-
-    flexible_dataset = FlexibleDataset(
-        args.dataset, 
-        tokenizer, 
-        model, 
-        seq_len=args.seq_len,
-        num_samples=args.num_samples
-    )
-    sampler = DistributedSampler(
-        flexible_dataset, 
-        num_replicas=dist.get_world_size(), 
-        rank=rank, 
-        shuffle=True, 
-        seed=49
-    )
-
-    max_batch_size = compute_batch_size(model, flexible_dataset, sampler)
-    print(f"THE MAX: {max_batch_size}")
-    batch_sizes.append(max_batch_size)
 
 def run_inference_workload(rank, model, batch=args.batch_size):
     try:
@@ -302,6 +273,9 @@ if __name__ == "__main__":
         world_size=args.world_size,
         expert_placement=args.expert_placement,
     )
+    router = None 
+    if args.enable_router_skew:
+        router=lambda: Router(model.config.num_experts, skew=args.router_skew, enable_random=args.random_router_skew)
     replace_moe_layer(
         model, 
         args.type_moe_parent,
@@ -309,7 +283,7 @@ if __name__ == "__main__":
         args.name_router, 
         experts,
         config,
-        router=lambda: Router(model.config.num_experts, skew=args.router_skew),
+        router=router,
     )
     
     if args.batch_size == None:

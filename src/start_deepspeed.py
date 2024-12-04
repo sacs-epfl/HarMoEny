@@ -31,6 +31,9 @@ from deepspeed.moe.sharded_moe import top1gating, top2gating, topkgating
 from deepspeed.utils.timer import SynchronizedWallClockTimer
 from typing import Callable, Dict, TYPE_CHECKING, Any, Optional, Tuple, Union
 
+def str2bool(s):
+        return s.lower() in ["yes", "y", "true", "t"]
+
 parser = argparse.ArgumentParser(
     prog="Run inference on DeepSpeed-MoE inference engine",
 )
@@ -45,6 +48,7 @@ parser.add_argument("--local_rank", default=0, type=int)
 parser.add_argument("--world_size", default=8, type=int)
 parser.add_argument("--capacity_factor", default=10.0, type=float)
 parser.add_argument("--router_skew", default=0.0, type=float, help="Value between 0 and 1")
+parser.add_argument("--random_router_skew", default=False, type=str2bool, help="Wether to enable random skewing in the router")
 args = parser.parse_args()
 
 
@@ -124,7 +128,7 @@ def run_inference_workload():
             self.top2_2nd_expert_sampling = top2_2nd_expert_sampling
             # Here is the update by adding my own router I can change the logits
             # I want to do this before the chaos that comes after which I cannot rewrite
-            self.router = Router(args.num_experts, skew=args.router_skew) 
+            self.router = Router(args.num_experts, skew=args.router_skew, enable_random=args.random_router_skew) 
 
         def _set_ep_group(self, ep_group):
             assert self.ep_group is None, f'Attempting to override an existing ep_group'
@@ -185,9 +189,9 @@ def run_inference_workload():
                         num_experts=args.num_experts,
                         ep_size=args.world_size,
                         k=1,
-                        eval_capacity_factor=args.capacity_factor,
-                        #drop_tokens=False,
-                        use_tutel=True,
+                        #eval_capacity_factor=args.capacity_factor,
+                        drop_tokens=False,
+                        use_tutel=False,
                         top2_2nd_expert_sampling=False,
                         use_rts=False,
                     )
@@ -313,8 +317,9 @@ def run_standard_experiment(ds_engine, loader):
                 decoder_input_ids=batch["decoder_input_ids"],
             )
             end = time.time()
-            if args.local_rank == 0:
-                print(end-start)
+            # UNCOMMENT IF DOING PREDICTION
+            # if args.local_rank == 0:
+            #     print(end-start)
             latencies.append(end-start)
         run_end = time.time()
     
