@@ -50,6 +50,7 @@ do
         --seq_len $seq_len \
         --num_experts $num_experts \
         --world_size $world_size \
+        --enable_router_skew True \
         --router_skew ${skews[i]} \
         --pa $output_path/${skews[i]}/fastmoe
 
@@ -61,6 +62,7 @@ do
         --num_experts $num_experts \
         --world_size $world_size \
         --router_skew ${skews[i]} \
+        --enable_router_skew True \
         --pa $output_path/${skews[i]}/fastermoe
 
     # deepspeed --num_gpus $world_size src/start_deepspeed.py \
@@ -72,6 +74,7 @@ do
     #     --world_size $world_size \
     #     --capacity_factor ${deepspeed_capacity_factors[i]} \
     #     --router_skew ${skews[i]} \
+    #     --enable_router_skew True \
     #     --pa $output_path/${skews[i]}/deepspeed
 done
 

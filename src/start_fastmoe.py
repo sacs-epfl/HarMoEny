@@ -29,8 +29,6 @@ from fmoe.gates.naive_gate import NaiveGate
 from fmoe.layers import FMoE
 from router import Router 
 
-#from fastmoe.fmoe.layers import FMoE
-#from fastmoe.fmoe.gates import SwitchGate
 from utils import TimedModule, get_timing_modules
 
 def str2bool(s):
@@ -48,6 +46,7 @@ parser.add_argument("--num_experts", default=8, type=int, help="Number of expert
 parser.add_argument("--world_size", default=torch.cuda.device_count(), type=int, help="Number of GPUs to use")
 parser.add_argument("--port", default="1234", type=str)
 parser.add_argument("--warmup_rounds", default=3, type=int)
+parser.add_argument("--enable_router_skew", default=False, type=str2bool)
 parser.add_argument("--router_skew", default=0.0, type=float, help="Value between 0 and 1")
 parser.add_argument("--random_router_skew", default=False, type=str2bool, help="Wether to enable random skewing in the router")
 args = parser.parse_args()
@@ -142,12 +141,12 @@ def run_inference_workload(rank):
                             world_size=args.world_size,
                             top_k=1,
                             expert=[lambda _, e=e: ExpertWrapper(e) for e in experts],
-                            gate=RouterWrapper,
-                            #gate=NaiveRouterWrapper,
+                            gate=RouterWrapper if args.enable_router_skew else NaiveGate,
                         )
 
-                        # with torch.no_grad():
-                        #     new.gate.gate.weight.copy_(router.classifier.weight)
+                        if not args.enable_router_skew:
+                            with torch.no_grad():
+                                new.gate.gate.weight.copy_(router.classifier.weight)
                         
                         setattr(module, child_name, TimedModule(FMoEWrapper(new), idx=idx[0]))
                         idx[0] += 1

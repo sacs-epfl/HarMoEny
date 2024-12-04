@@ -47,6 +47,7 @@ parser.add_argument("--warmup_rounds", default=3, type=int)
 parser.add_argument("--local_rank", default=0, type=int) 
 parser.add_argument("--world_size", default=8, type=int)
 parser.add_argument("--capacity_factor", default=10.0, type=float)
+parser.add_argument("--enable_router_skew", default=False, type=str2bool)
 parser.add_argument("--router_skew", default=0.0, type=float, help="Value between 0 and 1")
 parser.add_argument("--random_router_skew", default=False, type=str2bool, help="Wether to enable random skewing in the router")
 args = parser.parse_args()
@@ -129,6 +130,7 @@ def run_inference_workload():
             # Here is the update by adding my own router I can change the logits
             # I want to do this before the chaos that comes after which I cannot rewrite
             self.router = Router(args.num_experts, skew=args.router_skew, enable_random=args.random_router_skew) 
+            self.enable_router_skew = args.enable_router_skew
 
         def _set_ep_group(self, ep_group):
             assert self.ep_group is None, f'Attempting to override an existing ep_group'
@@ -146,8 +148,12 @@ def run_inference_workload():
             # input jittering
             if self.noisy_gate_policy == 'Jitter' and self.training:
                 input_fp32 = multiplicative_jitter(input_fp32, device=input.device)
-            #logits = torch.nn.functional.linear(input_fp32, weight=self.wg.weight.float(), bias=None)
-            _, _, logits = self.router(input_fp32)
+            
+            if self.enable_router_skew:
+                 _, _, logits = self.router(input_fp32)
+            else:
+                logits = torch.nn.functional.linear(input_fp32, weight=self.wg.weight.float(), bias=None)
+           
 
             if self.k == 1:
                 gate_output = top1gating(logits, self.capacity_factor if self.training else self.eval_capacity_factor,
@@ -196,14 +202,8 @@ def run_inference_workload():
                         use_rts=False,
                     )
 
-                    # Change gate
-                    setattr(new.deepspeed_moe, "gate", TopKGate(
-                        768, args.num_experts, 1, 1.0, args.capacity_factor,
-                        4, None, True, False, None, False
-                    ))
-
                     with torch.no_grad():
-                        # new.deepspeed_moe.gate.wg.weight.copy_(router.classifier.weight)
+                        new.deepspeed_moe.gate.wg.weight.copy_(router.classifier.weight)
                         for i in range(len(experts)):
                             new.deepspeed_moe.experts.deepspeed_experts[i].wi.weight.copy_(experts[i].wi.weight)
                             new.deepspeed_moe.experts.deepspeed_experts[i].wo.weight.copy_(experts[i].wo.weight)
