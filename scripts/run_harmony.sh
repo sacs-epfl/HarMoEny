@@ -37,5 +37,5 @@ python3 src/start_harmony.py \
         --world_size $num_gpus \
         --batch_size $batch_size \
         --enable_router_skew True \
-        --router_skew 0.0 \
+        --router_skew 0.5 \
         --path "outputs/harmony/run"

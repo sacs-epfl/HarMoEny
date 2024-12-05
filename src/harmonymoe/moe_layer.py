@@ -97,10 +97,11 @@ class MoELayer(nn.Module):
         self.start_second_transfer = torch.cuda.Event(enable_timing=True)
         self.end_second_transfer = torch.cuda.Event(enable_timing=True)
 
-    def get_statistics(self, DIR=""):
+    def get_statistics(self):
         stats = []
+        expert_manager_stats = self.expert_manager.get_statistics()
         for i in range(len(self.tot_num_toks_send)):
-            stats.append({
+            dic = {
                 "latency (ms)": self.latencies[i],
                 "metadata latency (ms)": self.metadata_latencies[i] if i < len(self.metadata_latencies) else -1,
                 "schedule latency (ms)": self.schedule_latencies[i] if i < len(self.schedule_latencies) else -1,
@@ -110,7 +111,14 @@ class MoELayer(nn.Module):
                 "total number of tokens sent": self.tot_num_toks_send[i],
                 "total number of tokens recv": self.tot_num_toks_recv[i],
                 "expert distribution": self.expert_freqs[i],
-            })
+            }
+
+            for key in expert_manager_stats.keys():
+                _len = len(expert_manager_stats[key])
+                if _len != 0:
+                    dic[key] = expert_manager_stats[key][i] if i < _len else -1
+
+            stats.append(dic)
         return stats
 
              
@@ -147,7 +155,7 @@ class MoELayer(nn.Module):
         self.end_schedule.record()
 
         num_toks_send = schedule[self.rank].sum()
-        self.tot_num_toks_send.append(num_toks_send)
+        self.tot_num_toks_send.append(num_toks_send.item())
 
         # If dropping need a way to make update hidden_states passed to distrbute_tokens
         tokens_send, send_splits = self.scheduler.distribute_tokens(schedule_list, hidden_states, expert_indices, num_toks_send)

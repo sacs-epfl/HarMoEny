@@ -6,18 +6,18 @@ num_iters=250
 output_path="data/systems/router_dynamic_skew/$(date +"%Y-%m-%d_%H-%M")"
 
 cd ..
-# python3 src/start_harmony.py \
-#     --dataset $dataset \
-#     --num_samples $((2500 * $world_size * $num_iters)) \
-#     --batch_size 2500 \
-#     --seq_len $seq_len \
-#     --model_name "google/switch-base-$num_experts" \
-#     --scheduling_policy "harmony" \
-#     --expert_cache_size 16 \
-#     --world_size $world_size \
-#     --enable_router_skew True \
-#     --random_router_skew True \
-#     --pa $output_path/harmony
+python3 src/start_harmony.py \
+    --dataset $dataset \
+    --num_samples $((2500 * $world_size * $num_iters)) \
+    --batch_size 2500 \
+    --seq_len $seq_len \
+    --model_name "google/switch-base-$num_experts" \
+    --scheduling_policy "harmony" \
+    --expert_cache_size 16 \
+    --world_size $world_size \
+    --enable_router_skew True \
+    --random_router_skew True \
+    --pa $output_path/harmony
 
 # python3 src/start_harmony.py \
 #     --dataset $dataset \
@@ -52,15 +52,15 @@ cd ..
 #     --random_router_skew True \
 #     --pa $output_path/fastermoe
 
-deepspeed --num_gpus $world_size src/start_deepspeed.py \
-    --dataset $dataset \
-    --num_samples $((200 * $world_size * $num_iters)) \
-    --batch_size 200 \
-    --seq_len $seq_len \
-    --num_experts $num_experts \
-    --world_size $world_size \
-    --random_router_skew True \
-    --pa $output_path/deepspeed
+# deepspeed --num_gpus $world_size src/start_deepspeed.py \
+#     --dataset $dataset \
+#     --num_samples $((200 * $world_size * $num_iters)) \
+#     --batch_size 200 \
+#     --seq_len $seq_len \
+#     --num_experts $num_experts \
+#     --world_size $world_size \
+#     --random_router_skew True \
+#     --pa $output_path/deepspeed
 
 
 #   --capacity_factor 64.0 \

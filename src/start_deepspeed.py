@@ -195,9 +195,9 @@ def run_inference_workload():
                         num_experts=args.num_experts,
                         ep_size=args.world_size,
                         k=1,
-                        #eval_capacity_factor=args.capacity_factor,
-                        drop_tokens=False,
-                        use_tutel=False,
+                        eval_capacity_factor=args.capacity_factor,
+                        #drop_tokens=False,
+                        use_tutel=True,
                         top2_2nd_expert_sampling=False,
                         use_rts=False,
                     )
