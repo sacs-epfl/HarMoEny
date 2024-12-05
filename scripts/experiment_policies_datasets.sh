@@ -13,7 +13,7 @@ even_split_batches=(2500 2500 2500 2500)
 drop_batches=(2500 2500 2500 2500)
 
 cd ..
-for i in {1..5}
+for i in {0..3}
 do
     python3 src/start_harmony.py \
         --dataset ${datasets[i]} \
