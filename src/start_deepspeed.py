@@ -202,6 +202,11 @@ def run_inference_workload():
                         use_rts=False,
                     )
 
+                    # TODO verify this works
+                    setattr(new.deepspeed_moe, "gate", 
+                        TopKGate(768, args.num_experts, 1, 1.0, args.capacity_factor, 8, None, False, False, None, False)
+                    )
+
                     with torch.no_grad():
                         new.deepspeed_moe.gate.wg.weight.copy_(router.classifier.weight)
                         for i in range(len(experts)):
