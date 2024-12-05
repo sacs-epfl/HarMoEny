@@ -6,7 +6,7 @@ import random
 import weakref
 
 class ExpertManager():
-    def __init__(self, experts: nn.ModuleList, cache_size: int, dynamic_components: list, fixed_cache=None, reference_cache=None, cache_policy="MTU", num_gpus=1):
+    def __init__(self, experts: nn.ModuleList, cache_size: int, dynamic_components: list, fixed_cache=None, reference_cache=None, cache_policy="MTU", num_gpus=1, disable_async_fetch=False):
         self.experts = experts
         self.num_experts = len(experts)
         self.num_gpus = num_gpus
@@ -15,6 +15,7 @@ class ExpertManager():
         self.fixed_cache = fixed_cache
         self.reference_cache = list(map(lambda x: x[:cache_size], reference_cache)) if reference_cache else None 
         self.cache_policy = cache_policy
+        self.disable_async_fetch = disable_async_fetch
 
         self.validate_arguments()
 
@@ -114,20 +115,26 @@ class ExpertManager():
             return
         self.cache[dist.get_rank()][load_idx] = expert_idx
         with torch.no_grad():
-            with torch.cuda.stream(self.stream):
+            if self.disable_async_fetch:
                 for component in self.dynamic_components:
                     getattr(self.cached_experts[load_idx], component).weight.copy_(getattr(self.experts[expert_idx], component).weight)
                 self.is_slot_loaded[load_idx].record()
+            else:
+                with torch.cuda.stream(self.stream):
+                    for component in self.dynamic_components:
+                        getattr(self.cached_experts[load_idx], component).weight.copy_(getattr(self.experts[expert_idx], component).weight)
+                    self.is_slot_loaded[load_idx].record()
     
     # Returns index of expert.
     def expert_loaded_location(self, expert_idx):
+        # Returns -1 if not found
         idx = -1
         for i, v in enumerate(self.cache[dist.get_rank()]):
             if v == expert_idx:
                 idx = i
                 break
-        if idx == -1:
-            raise Exception(f"Expert {expert_idx} is not cached on rank {dist.get_rank()}.")
+        # if idx == -1:
+        #     raise Exception(f"Expert {expert_idx} is not cached on rank {dist.get_rank()}.")
         return idx 
     
     def is_expert_loaded(self, expert_idx):
@@ -179,14 +186,22 @@ class ExpertManager():
         # Begin execution
         for idx, expert_idx in enumerate(expert_order):
             slot_idx = self.expert_loaded_location(expert_idx)
-            self.is_slot_loaded[slot_idx].record()
+            # Check if not assigned to a cache which is possible if we have disabled async fetch
+            if slot_idx == -1:
+                # print("Need to fetch expert later")
+                slot_idx = 0 # Just default to loading to the first slot
+                self.num_swaps += 1
+                self.load_expert(expert_idx, slot_idx) 
+
+            self.is_slot_loaded[slot_idx].synchronize()  # Wait until the expert is loaded
             tokens[expert_mask[expert_idx]] = self.cached_experts[slot_idx](tokens[expert_mask[expert_idx]])
 
             # Check if anything else needs loading
-            next_expert_idx = self.next_not_loaded_expert(expert_order, idx)
-            if next_expert_idx is not None:
-                self.num_swaps += 1
-                self.load_expert(next_expert_idx, slot_idx)
+            if not self.disable_async_fetch:
+                next_expert_idx = self.next_not_loaded_expert(expert_order, idx)
+                if next_expert_idx is not None:
+                    self.num_swaps += 1
+                    self.load_expert(next_expert_idx, slot_idx)
         
         self.update_cache(schedule)
 

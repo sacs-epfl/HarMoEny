@@ -19,6 +19,7 @@ class MoEConfig:
     d_model: int = 768
     world_size: int = 1
     expert_placement: list = None
+    disable_async_fetch: bool = False
 
 class MoELayer(nn.Module):
     def __init__(self, router, experts, config=MoEConfig):
@@ -65,6 +66,7 @@ class MoELayer(nn.Module):
             reference_cache=self.scheduler.get_reference_assign(),
             cache_policy=config.cache_policy,
             num_gpus=self.num_gpus,
+            disable_async_fetch=config.disable_async_fetch,
         )
     
     # This is called on all modules to apply certain functions such as cuda

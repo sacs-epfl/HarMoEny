@@ -63,7 +63,9 @@ parser.add_argument("--path", default="outputs/harmony", type=str)
 parser.add_argument("--expert_placement", default=None, type=str)
 parser.add_argument("--enable_router_skew", default=False, type=str2bool)
 parser.add_argument("--router_skew", default=0.0, type=float, help="Value between 0 and 1")
-parser.add_argument("--random_router_skew", default=False, type=str2bool, help="Wether to enable random skewing in the router")
+parser.add_argument("--router_num_experts_skew", default=1, type=int, help="Number of experts that receive the skewed proportion")
+parser.add_argument("--random_router_skew", default=False, type=str2bool, help="Whether to enable random skewing in the router")
+parser.add_argument("--disable_async_fetch", default=False, type=str2bool, help="Whether want to disable the background expert fetching")
 args = parser.parse_args()
 
 ############# GLOBAL AFFAIRS ################
@@ -272,10 +274,11 @@ if __name__ == "__main__":
         d_model=args.d_model,
         world_size=args.world_size,
         expert_placement=args.expert_placement,
+        disable_async_fetch=args.disable_async_fetch,
     )
     router = None 
     if args.enable_router_skew:
-        router=lambda: Router(model.config.num_experts, skew=args.router_skew, enable_random=args.random_router_skew)
+        router=lambda: Router(model.config.num_experts, skew=args.router_skew, num_expert_skew=args.router_num_experts_skew, enable_random=args.random_router_skew)
     replace_moe_layer(
         model, 
         args.type_moe_parent,
