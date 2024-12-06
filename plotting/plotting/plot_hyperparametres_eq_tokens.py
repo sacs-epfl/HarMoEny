@@ -10,6 +10,9 @@ def main():
     
     plt.plot(df["eq_tokens"], df["duration (s)"])
 
+    plt.xlabel("Hyperparametre eq_tokens")
+    plt.ylabel("Duration (s)")
+
     save_plot(plt, "../figures/hyperparameters/eq_tokens/eq_tokens_duration.png")
 
 if __name__ == "__main__":
