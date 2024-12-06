@@ -182,32 +182,62 @@ class Scheduler():
         
         return expert_gpu
 
+    # def schedule_drop(self, meta):
+    #     schedule = [[[0 for _ in range(self.num_gpus)] for _ in range(self.num_experts)] for _ in range(self.num_gpus)]
+
+    #     avg = int(sum(map(lambda t: sum(t).item(), meta)) / self.num_gpus) 
+    #     gpu_amt = [0 for _ in range(self.num_gpus)]
+    #     for i in range(self.num_gpus): # source
+    #         for j in range(self.num_experts): # expert
+    #             num_tokens = meta[i][j].item()
+    #             if num_tokens == 0:
+    #                 continue # We do not have work for this one
+    #             start_idx = 0
+    #             for k in range(self.num_gpus): # dest
+    #                 if j in self.gpu_to_experts_list[k]:
+    #                     if gpu_amt[k] < avg:
+    #                         num_tokens_send = min(num_tokens, avg - gpu_amt[k])
+    #                         schedule[i][j][k] = num_tokens_send
+    #                         gpu_amt[k] += num_tokens_send
+
+    #     return torch.tensor(schedule, dtype=torch.long, device="cuda")
+
     def schedule_drop(self, meta):
-        schedule = [[[0 for _ in range(self.num_gpus)] for _ in range(self.num_experts)] for _ in range(self.num_gpus)]
+        schedule = self.schedule_fixed(meta)
 
-        avg = int(sum(map(lambda t: sum(t).item(), meta)) / self.num_gpus) 
-        gpu_amt = [0 for _ in range(self.num_gpus)]
-        for i in range(self.num_gpus): # source
-            for j in range(self.num_experts): # expert
-                num_tokens = meta[i][j].item()
-                if num_tokens == 0:
-                    continue # We do not have work for this one
-                start_idx = 0
-                for k in range(self.num_gpus): # dest
-                    if j in self.gpu_to_experts_list[k]:
-                        if gpu_amt[k] < avg:
-                            num_tokens_send = min(num_tokens, avg - gpu_amt[k])
-                            schedule[i][j][k] = num_tokens_send
-                            gpu_amt[k] += num_tokens_send
+        avg = meta.sum().item() // self.num_gpus
 
-        return torch.tensor(schedule, dtype=torch.long, device="cuda")
+        gpu_amt = torch.sum(schedule, dim=(0,1))
+
+        for i in range(self.num_gpus):
+            while gpu_amt[i] > avg:
+                # Find entry that is sending the most
+
+                over = gpu_amt[i] - avg
+
+                schedule_for_gpu = schedule[:, :, i]
+
+                max_val, max_idx = torch.max(schedule_for_gpu.view(-1), dim=0)
+                if max_val == 0:
+                    break # This shouldn't happen given while loop
+
+                idx_source = max_idx // self.num_experts
+                idx_expert = max_idx % self.num_experts
+
+                remove_amt = min(over, max_val.item())
+
+                schedule[idx_source, idx_expert, i] -= remove_amt
+                gpu_amt[i] -= remove_amt
+        
+        return schedule
+
     
     def schedule_fixed(self, meta):
         schedule = torch.zeros((self.num_gpus, self.num_experts, self.num_gpus), dtype=torch.int, device="cuda")
 
         schedule[:, torch.arange(self.num_experts, device="cuda"), self.expert_to_gpu] = meta
 
-        return schedule#.tolist() # Need it to list for exflow
+        return schedule
 
     def schedule_harmony(self, meta):
         # if self.rank == 0:
