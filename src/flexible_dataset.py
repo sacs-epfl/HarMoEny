@@ -41,7 +41,14 @@ class FlexibleDataset(Dataset):
             ]
             self.dataset_lengths = [len(self.datasets[i]) for i in range(4)]
         elif self.dataset_option == "random":
-            pass
+            special_ids = {
+                self.tokenizer.pad_token_id,
+                self.tokenizer.eos_token_id,
+                self.tokenizer.bos_token_id,
+                self.tokenizer.unk_token_id
+            }
+            allowed_token_ids = [i for i in range(self.tokenizer.vocab_size) if i not in special_ids]
+            self.pertinent_tokens = torch.tensor(allowed_token_ids)
         elif self.dataset_option == "constant":
             pass
         elif self.dataset_option.startswith("skew"):
@@ -111,7 +118,8 @@ class FlexibleDataset(Dataset):
     
     def _generate_random_entry(self):
 
-        text_encoded = torch.randint(0, self.tokenizer.vocab_size, (self.max_length,))
+        indices = torch.randint(0, self.pertinent_tokens.shape[0], (self.max_length,))
+        text_encoded = self.pertinent_tokens[indices]
 
         encoder_tokenized = {
             "input_ids": text_encoded,

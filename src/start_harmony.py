@@ -55,7 +55,7 @@ parser.add_argument("--d_model", default=768, type=int, help="Dimension of model
 parser.add_argument("--scheduling_policy", default="deepspeed", type=str)
 parser.add_argument("--cache_policy", default="RAND", type=str)
 parser.add_argument("--expert_cache_size", default=2, type=int)
-parser.add_argument("--eq_tokens", default=1024, type=int)
+parser.add_argument("--eq_tokens", default=150, type=int)
 parser.add_argument("--world_size", default=torch.cuda.device_count(), type=int)
 parser.add_argument("--port", default="1234", type=str)
 parser.add_argument("--warmup_rounds", default=3, type=int)
