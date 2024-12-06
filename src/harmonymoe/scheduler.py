@@ -210,6 +210,9 @@ class Scheduler():
         return schedule#.tolist() # Need it to list for exflow
 
     def schedule_harmony(self, meta):
+        # if self.rank == 0:
+        #     print(self.eq_tokens)
+
         schedule = self.schedule_fixed(meta)
 
         avg = meta.sum().item() // self.num_gpus
@@ -230,7 +233,11 @@ class Scheduler():
 
             tokens_to_move = expert_tokens[expert_idx]
 
+            # if self.rank == 0:
+            #     print(tokens_to_move)
             if tokens_to_move < self.eq_tokens:
+                # if self.rank == 0:
+                #     print("MADE IT HERE")
                 break # Not enough tokens to move
             
             # Identify least loaded GPU
@@ -246,9 +253,6 @@ class Scheduler():
             gpu_amt[overloaded_idx] -= tokens_send
             gpu_amt[least_idx] += tokens_send
         
-        # if self.rank == 0:
-        #     print(schedule)
-        #return schedule#.tolist() # TODO remove tolist and keep it on CUDA to do all my transformations on GPU
         return schedule
 
     def schedule_even_split(self, meta):

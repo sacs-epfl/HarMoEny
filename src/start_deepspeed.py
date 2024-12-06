@@ -202,7 +202,6 @@ def run_inference_workload():
                         use_rts=False,
                     )
 
-                    # TODO verify this works
                     setattr(new.deepspeed_moe, "gate", 
                         TopKGate(768, args.num_experts, 1, 1.0, args.capacity_factor, 8, None, False, False, None, False)
                     )

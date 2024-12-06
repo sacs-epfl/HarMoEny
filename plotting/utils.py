@@ -32,6 +32,9 @@ class Data():
             return most_recent_folder
         else:
             return None
+    
+    def get_children(self):
+        return os.listdir(self.most_recent_folder)
 
     def load(self, name):
         df = pd.read_csv(f"{self.most_recent_folder}/{name}", index_col=0)

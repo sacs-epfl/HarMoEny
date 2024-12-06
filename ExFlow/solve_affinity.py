@@ -19,7 +19,7 @@ print(num_layer)
 num_expert_per_layer = int(sys.argv[2])
 total_experts = num_expert_per_layer * num_layer
 assert total_experts % 2 == 0
-intra_gpus = 8
+intra_gpus = 2
 nodes = 1
 use_bipart = True
 incremental_amount = 5000
