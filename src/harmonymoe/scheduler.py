@@ -30,6 +30,7 @@ class Scheduler():
                 self.expert_to_gpu = self.generate_naive_expert_gpu_tensor()
             case "even_split":
                 self.scheduler = self.schedule_even_split
+                self.expert_to_gpu = self.generate_naive_expert_gpu_tensor()
             case "drop":
                 self.scheduler = self.schedule_drop
                 self.is_fixed_placement = True
@@ -57,6 +58,12 @@ class Scheduler():
         self.rank = dist.get_rank()
         if self.expert_to_gpu is not None:
             self.expert_to_gpu.cuda()
+
+    def get_cache(self):
+        if self.gpu_to_experts_list is not None:
+            return list(map(lambda x: list(map(lambda y: y.item(), x)), self.gpu_to_experts_list))
+        else:
+            return None
     
     def get_fixed_assign(self):
         if self.is_fixed_placement:

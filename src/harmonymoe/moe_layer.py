@@ -62,10 +62,7 @@ class MoELayer(nn.Module):
             experts, 
             config.expert_cache_size,
             config.dynamic_components,
-            fixed_cache=self.scheduler.get_fixed_assign(),
-            reference_cache=self.scheduler.get_reference_assign(),
-            cache_policy=config.cache_policy,
-            num_gpus=self.num_gpus,
+            cache=self.scheduler.get_cache(),
             disable_async_fetch=config.disable_async_fetch,
         )
     
