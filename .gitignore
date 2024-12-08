@@ -3,3 +3,4 @@ outputs
 plots
 *.pth
 *__pycache__
+*.nsys-rep

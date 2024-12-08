@@ -60,13 +60,13 @@ class Scheduler():
     
     def get_fixed_assign(self):
         if self.is_fixed_placement:
-            return self.gpu_to_experts_list
+            return list(map(lambda x: list(map(lambda y: y.item(), x)), self.gpu_to_experts_list))
         return None 
         #return self.fixed_assign
     
     def get_reference_assign(self):
         if self.is_reference_placement:
-            return self.gpu_to_experts_list
+            return list(map(lambda x: list(map(lambda y: y.item(), x)), self.gpu_to_experts_list))
         return None
         #return self.reference_assign 
     
