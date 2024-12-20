@@ -29,6 +29,8 @@ from fmoe.gates.naive_gate import NaiveGate
 from fmoe.layers import FMoE
 from router import Router 
 
+
+from fastmoe_utils import add_fmoe_model_switch, add_fmoe_model_mixtral
 from utils import TimedModule, get_timing_modules
 
 def str2bool(s):
@@ -42,12 +44,14 @@ parser.add_argument("--num_samples", default=0, type=int, help="Number of total 
 parser.add_argument("--batch_size", default=250, type=int, help="Batch size per GPU")
 parser.add_argument("--seq_len", default=120, type=int)
 parser.add_argument("--path", default="outputs/out", type=str, help="Specify where to save path")
+parser.add_argument("--model_name", default="google/switch-base-128", type=str, help="Model we want to run inference on")
 parser.add_argument("--num_experts", default=8, type=int, help="Number of experts we want to match dense model to")
 parser.add_argument("--world_size", default=torch.cuda.device_count(), type=int, help="Number of GPUs to use")
 parser.add_argument("--port", default="1234", type=str)
 parser.add_argument("--warmup_rounds", default=3, type=int)
 parser.add_argument("--enable_router_skew", default=False, type=str2bool)
 parser.add_argument("--router_skew", default=0.0, type=float, help="Value between 0 and 1")
+parser.add_argument("--router_num_experts_skew", default=1, type=int, help="Number of experts that receive the skewed proportion")
 parser.add_argument("--random_router_skew", default=False, type=str2bool, help="Wether to enable random skewing in the router")
 args = parser.parse_args()
 
@@ -76,85 +80,17 @@ def run_inference_workload(rank):
         mp.current_process().name = f'Worker-{rank}'
         setup(rank)
 
-        model_name = f"google/switch-base-{args.num_experts}"
-        model = AutoModel.from_pretrained(model_name, cache_dir="/cache")
+      #  model_name = f"google/switch-base-{args.num_experts}"
+        model = AutoModel.from_pretrained(args.model_name, cache_dir="/cache")
 
-        class ExpertWrapper(nn.Module):
-            def __init__(self, child):
-                super().__init__()
-                self.child = child
-            
-            def forward(self, x, _):
-                return self.child(x)
-        
-        class FMoEWrapper(nn.Module):
-            def __init__(self, child):
-                super().__init__()
-                self.child = child
+        if "switch" in args.model_name:
+            add_fmoe_model_switch(model, [0], args)
+        elif "Mixtral" in args.model_name:
+            add_fmoe_model_mixtral(model, [0], args)
+        else:
+            raise Exception("That model is not supported")
 
-            def forward(self, x):
-                batch_size, seq_len, d_model = x.shape
-                x = x.reshape(-1, d_model)  # Shape: [batch_size * seq_len, d_model]
-                output = self.child(x)  # FMoE expects input of shape [tokens, d_model]
-                output = output.reshape(batch_size, seq_len, d_model)
-                return output
-
-        class RouterWrapper(Router):
-            def __init__(self, d_model, num_expert, world_size, top_k=2, gate_bias=True):
-                super().__init__(args.num_experts, skew=args.router_skew, enable_random=args.random_router_skew)
-                self.d_model = d_model
-            
-            def forward(self, x):
-                router_mask, router_probs, router_logits = super().forward(x)
-                gate_top_k_idx = torch.argmax(router_mask, dim=-1).unsqueeze(1)
-                gate_score = router_probs
-
-                return gate_top_k_idx, gate_score
-
-        class NaiveRouterWrapper(NaiveGate):
-            def __init__(self, d_model, num_expert, world_size, top_k=2, gate_bias=True):
-                super().__init__(d_model, num_expert, world_size, top_k=top_k, gate_bias=gate_bias)
-            
-            def forward(self, x):
-                gate_top_k_idx, gate_score = super().forward(x)
-                print(f"Top_k_idx: {gate_top_k_idx.shape}")
-                print(f"Score: {gate_score.shape}")
-                exit(0)
-
-        # Update to add FMoE to it
-        def add_fmoe_model(module, idx):
-            if type(module).__name__ == "SwitchTransformersLayerFF":
-                for child_name, child in module.named_children():
-                    if type(child).__name__ == "SwitchTransformersSparseMLP":
-                        router = getattr(child, "router")
-                        experts = getattr(child, "experts")
-                        if type(experts) == nn.ModuleDict:
-                            experts = list(experts.values())
-                        
-                        num_experts_per_gpu = args.num_experts // args.world_size
-
-                        experts = experts[rank*num_experts_per_gpu:(rank+1)*num_experts_per_gpu]
-
-                        new = FMoE(
-                            num_expert=num_experts_per_gpu,
-                            d_model=768,
-                            world_size=args.world_size,
-                            top_k=1,
-                            expert=[lambda _, e=e: ExpertWrapper(e) for e in experts],
-                            gate=RouterWrapper if args.enable_router_skew else NaiveGate,
-                        )
-
-                        if not args.enable_router_skew:
-                            with torch.no_grad():
-                                new.gate.gate.weight.copy_(router.classifier.weight)
-                        
-                        setattr(module, child_name, TimedModule(FMoEWrapper(new), idx=idx[0]))
-                        idx[0] += 1
-            else:
-                for child in module.children():
-                    add_fmoe_model(child, idx)
-
-        add_fmoe_model(model, [0])
+        #add_fmoe_model(model, [0])
 
         model.cuda()
         model.eval()

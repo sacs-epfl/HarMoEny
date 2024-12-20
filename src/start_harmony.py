@@ -44,13 +44,14 @@ parser.add_argument("--num_samples", default=0, type=int, help="Number of total 
 parser.add_argument("--batch_size", default=None, type=int, help="Batch size per GPU")
 parser.add_argument("--start_batch_size", default=1, type=int)
 parser.add_argument("--seq_len", default=120, type=int)
+parser.add_argument("--num_experts", default=8, type=int)
 parser.add_argument("--model_name", default="google/switch-base-64", type=str, help="Huggingface model")
 parser.add_argument("--type_moe_parent", default="SwitchTransformersLayerFF", type=str, help="class name of model MoE Layer parent")
 parser.add_argument("--type_moe", default="SwitchTransformersSparseMLP", type=str, help="class name of model MoE Layers")
 parser.add_argument("--name_router", default="router", type=str, help="parameter name of router on MoE")
 parser.add_argument("--name_experts", default="experts", type=str, help="parameter name of router on MoE")
 parser.add_argument("--name_decoder", default="decoder", type=str, help="module name of model decoder")
-parser.add_argument("--dynamic_components", default=["wi", "wo"], type=list, help="parameter names of expert changing weights")
+parser.add_argument("--dynamic_components", nargs='+', default=["wi", "wo"], type=str, help="parameter names of expert changing weights")
 parser.add_argument("--d_model", default=768, type=int, help="Dimension of model hidden states")
 parser.add_argument("--scheduling_policy", default="deepspeed", type=str)
 parser.add_argument("--cache_policy", default="RAND", type=str)
@@ -126,6 +127,7 @@ def compute_batch_size(model, dataset, sampler):
 
 def run_inference_workload(rank, model, batch=args.batch_size):
     try:
+        print("HERE2")
         args.batch_size = batch
 
         mp.current_process().name = f'Worker-{rank}'
@@ -278,7 +280,7 @@ if __name__ == "__main__":
     )
     router = None 
     if args.enable_router_skew:
-        router=lambda: Router(model.config.num_experts, skew=args.router_skew, num_expert_skew=args.router_num_experts_skew, enable_random=args.random_router_skew)
+        router=lambda: Router(args.num_experts, skew=args.router_skew, num_expert_skew=args.router_num_experts_skew, enable_random=args.random_router_skew)
     replace_moe_layer(
         model, 
         args.type_moe_parent,
@@ -288,21 +290,23 @@ if __name__ == "__main__":
         config,
         router=router,
     )
+
+    print("HERE")
     
-    if args.batch_size == None:
-        manager = mp.Manager()
-        batch_sizes = manager.list()
+    # if args.batch_size == None:
+    #     manager = mp.Manager()
+    #     batch_sizes = manager.list()
 
-        processes = []
-        mp.set_start_method("spawn", force=True)
-        for i in range(args.world_size):
-            p = mp.Process(target=find_batch_size, args=(i, model, batch_sizes))
-            p.start()
-            processes.append(p)
-        for p in processes:
-            p.join()
+    #     processes = []
+    #     mp.set_start_method("spawn", force=True)
+    #     for i in range(args.world_size):
+    #         p = mp.Process(target=find_batch_size, args=(i, model, batch_sizes))
+    #         p.start()
+    #         processes.append(p)
+    #     for p in processes:
+    #         p.join()
 
-        args.batch_size = min(batch_sizes)
+    #     args.batch_size = min(batch_sizes)
 
     print(f"NEW BATCH SIZE: {args.batch_size}")
 

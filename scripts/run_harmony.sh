@@ -41,7 +41,26 @@
 #         --path "outputs/harmony/run"
 
 
-num_samples=25600
+# num_samples=2560
+# seq_len=512
+# batch_size=64
+# world_size=8
+# num_experts=128
+
+# cd ..
+# python3 src/start_harmony.py \
+#         --dataset "random" \
+#         --num_samples $num_samples \
+#         --batch_size $batch_size \
+#         --seq_len $seq_len \
+#         --model_name "google/switch-base-$num_experts" \
+#         --scheduling_policy "harmony" \
+#         --expert_cache_size 16 \
+#         --world_size $world_size \
+#         --eq_tokens 1024 \
+#         --pa "outputs/harmony/run"
+
+num_samples=2560
 seq_len=512
 batch_size=64
 world_size=8
@@ -58,4 +77,5 @@ python3 src/start_harmony.py \
         --expert_cache_size 16 \
         --world_size $world_size \
         --eq_tokens 1024 \
+        --disable_async_fetch True \
         --pa "outputs/harmony/run"

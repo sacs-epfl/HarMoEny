@@ -1,10 +1,28 @@
-outputs/experiment_1_2/2024-11-15_14-07
-[2024-11-15 14:07:53,197] [INFO] [real_accelerator.py:219:get_accelerator] Setting ds_accelerator to cuda (auto detect)
-[2024-11-15 14:08:00,912] [INFO] [real_accelerator.py:219:get_accelerator] Setting ds_accelerator to cuda (auto detect)
-[2024-11-15 14:08:00,966] [INFO] [real_accelerator.py:219:get_accelerator] Setting ds_accelerator to cuda (auto detect)
-[2024-11-15 14:08:01,048] [INFO] [real_accelerator.py:219:get_accelerator] Setting ds_accelerator to cuda (auto detect)
-[2024-11-15 14:08:01,068] [INFO] [real_accelerator.py:219:get_accelerator] Setting ds_accelerator to cuda (auto detect)
-[2024-11-15 14:08:01,093] [INFO] [real_accelerator.py:219:get_accelerator] Setting ds_accelerator to cuda (auto detect)
-[2024-11-15 14:08:01,108] [INFO] [real_accelerator.py:219:get_accelerator] Setting ds_accelerator to cuda (auto detect)
-[2024-11-15 14:08:01,117] [INFO] [real_accelerator.py:219:get_accelerator] Setting ds_accelerator to cuda (auto detect)
-[2024-11-15 14:08:01,134] [INFO] [real_accelerator.py:219:get_accelerator] Setting ds_accelerator to cuda (auto detect)
+MixtralModel(
+  (embed_tokens): Embedding(32000, 4096)
+  (layers): ModuleList(
+    (0-31): 32 x MixtralDecoderLayer(
+      (self_attn): MixtralSdpaAttention(
+        (q_proj): Linear(in_features=4096, out_features=4096, bias=False)
+        (k_proj): Linear(in_features=4096, out_features=1024, bias=False)
+        (v_proj): Linear(in_features=4096, out_features=1024, bias=False)
+        (o_proj): Linear(in_features=4096, out_features=4096, bias=False)
+        (rotary_emb): MixtralRotaryEmbedding()
+      )
+      (block_sparse_moe): MixtralSparseMoeBlock(
+        (gate): Linear(in_features=4096, out_features=8, bias=False)
+        (experts): ModuleList(
+          (0-7): 8 x MixtralBlockSparseTop2MLP(
+            (w1): Linear(in_features=4096, out_features=14336, bias=False)
+            (w2): Linear(in_features=14336, out_features=4096, bias=False)
+            (w3): Linear(in_features=4096, out_features=14336, bias=False)
+            (act_fn): SiLU()
+          )
+        )
+      )
+      (input_layernorm): MixtralRMSNorm((4096,), eps=1e-05)
+      (post_attention_layernorm): MixtralRMSNorm((4096,), eps=1e-05)
+    )
+  )
+  (norm): MixtralRMSNorm((4096,), eps=1e-05)
+)

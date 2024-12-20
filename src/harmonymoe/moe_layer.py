@@ -33,6 +33,7 @@ class MoELayer(nn.Module):
         self.num_experts = len(experts)
         self.num_gpus = config.world_size
         self.d_model = config.d_model
+        experts = self.pin_experts_to_pinned_memory(experts)
 
         # For statistics 
         self.tot_num_toks_send = []
@@ -64,7 +65,16 @@ class MoELayer(nn.Module):
             config.dynamic_components,
             cache=self.scheduler.get_cache(),
             disable_async_fetch=config.disable_async_fetch,
+            layer_idx=self.layer_idx,
         )
+    
+    def pin_experts_to_pinned_memory(self, experts):
+        pinned_experts = []
+        for expert in experts:
+            for param in expert.parameters():
+                param.data = param.data.pin_memory()
+            pinned_experts.append(expert)
+        return nn.ModuleList(pinned_experts)
     
     # This is called on all modules to apply certain functions such as cuda
     def _apply(self, fn):
