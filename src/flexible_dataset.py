@@ -7,13 +7,14 @@ from torch.utils.data import Dataset
 
 
 class FlexibleDataset(Dataset):
-    def __init__(self, dataset_name, tokenizer, model, seq_len=120, num_samples=64, random_seed=32):
+    def __init__(self, dataset_name, tokenizer, model, seq_len=120, num_samples=64, random_seed=32, model_name=None):
         datasets.enable_caching()
 
         self.tokenizer = tokenizer
         self.max_length = seq_len
         self.dataset_option = dataset_name
         self.num_samples = num_samples
+        self.is_switch = "switch" in model_name
         torch.manual_seed(random_seed)
 
         if self.dataset_option == "bookcorpus":
@@ -130,16 +131,26 @@ class FlexibleDataset(Dataset):
         return encoder_tokenized
     
     def _generate_constant_entry(self):
-        # 8774 is 'hello' in t5 tokenizer. Will be something else for other things.
-        text_encoded = torch.full((self.max_length,), 8774)
-        text_encoded[-1] = self.tokenizer.eos_token_id 
+        
+        if self.is_switch:
+            text_encoded = torch.full((self.max_length,), 8774) # 8774 is 'hello' in t5 tokenizer.
+            text_encoded[-1] = 1
+            decoder_token = self.tokenizer.pad_token_id
 
-        encoder_tokenized = {
-            "input_ids": text_encoded,
-            "attention_mask": (text_encoded != self.tokenizer.pad_token_id).long(),
-            "decoder_input_ids": torch.tensor([self.tokenizer.pad_token_id])
-        }
-
+            encoder_tokenized = {
+                "input_ids": text_encoded,
+                "attention_mask": torch.full((self.max_length,), 1),
+                "decoder_input_ids": torch.tensor([decoder_token])
+            }
+        else:
+            text_encoded = torch.full((self.max_length,), 22557) # 22557 is 'hello' in mixtral
+            text_encoded[0] = 1
+            
+            encoder_tokenized = {
+                "input_ids": text_encoded,
+                "attention_mask": torch.full((self.max_length,), 1),
+            }
+         
         return encoder_tokenized
     
     def _generate_skewed_entry(self):

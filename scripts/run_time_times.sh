@@ -23,6 +23,7 @@ cd ..
 #         --num_samples $num_samples \
 #         --seq_len $seq_len \
 #         --model_name "google/switch-base-$num_experts" \
+#         --num_experts $num_experts \
 #         --scheduling_policy "harmony" \
 #         --expert_cache_size 16 \
 #         --world_size $num_gpus \
@@ -37,6 +38,7 @@ cd ..
 #         --num_samples $num_samples \
 #         --seq_len $seq_len \
 #         --model_name "google/switch-base-$num_experts" \
+#         --num_experts $num_experts \
 #         --scheduling_policy "harmony" \
 #         --expert_cache_size 16 \
 #         --world_size $num_gpus \
@@ -47,17 +49,18 @@ cd ..
 #         --router_num_experts_skew 10 \
 #         --path "outputs/timetime/multi/harmony_no_async_fetch_router_skew50"
 
-# python3 src/start_fastmoe.py \
-#         --dataset $dataset \
-#         --num_samples $num_samples \
-#         --seq_len $seq_len \
-#         --num_experts $num_experts \
-#         --world_size $num_gpus \
-#         --batch_size 2000 \
-#         --enable_router_skew True \
-#         --router_skew 0.5 \
-#         --router_num_experts_skew 10 \
-#         --pa "outputs/timetime/multi/fastmoe_router_skew50"
+#  python3 src/start_fastmoe.py \
+#          --dataset $dataset \
+#          --num_samples $num_samples \
+#          --seq_len $seq_len \
+#          --num_experts $num_experts \
+#          --model_name "google/switch-base-128" \
+#          --world_size $num_gpus \
+#          --batch_size 2000 \
+#          --enable_router_skew True \
+#          --router_skew 0.5 \
+#          --router_num_experts_skew 10 \
+#          --pa "outputs/timetime/multi/fastmoe_router_skew50"
 
 
 
@@ -65,9 +68,9 @@ cd ..
 
 
 
-seq_len=64
-batch_size=100
-num_samples=2000
+seq_len=12
+batch_size=1
+num_samples=1
 
 # MIXTRAL
 # python3 src/start_harmony.py \
@@ -96,14 +99,11 @@ python3 src/start_fastmoe.py \
         --dataset $dataset \
         --num_samples $num_samples \
         --seq_len $seq_len \
-        --num_experts $num_experts \
-        --world_size 4 \
+        --world_size 8 \
         --model_name "mistralai/Mixtral-8x7B-Instruct-v0.1" \
+        --num_experts 8 \
         --batch_size $batch_size \
         --enable_router_skew True \
         --router_skew 0.5 \
         --router_num_experts_skew 2 \
-        --pa "outputs/timetime/multi/fastmoe_router_skew50"
-
-
-
+        --pa "outputs/timetime/mixtral_multi/fastmoe_router_skew50"

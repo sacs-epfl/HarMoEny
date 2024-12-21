@@ -90,19 +90,22 @@ def run_inference_workload(rank):
         else:
             raise Exception("That model is not supported")
 
-        #add_fmoe_model(model, [0])
+        print("CHECK THE GPU MEM USE")
+        time.sleep(10000)
+        exit(0)
 
         model.cuda()
         model.eval()
 
-        tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir="/cache")
+        tokenizer = AutoTokenizer.from_pretrained(args.model_name, cache_dir="/cache")
 
         flexible_dataset = FlexibleDataset(
             args.dataset, 
             tokenizer, 
             model, 
             seq_len=args.seq_len,
-            num_samples=args.num_samples
+            num_samples=args.num_samples,
+            model_name=args.model_name,
         )
         sampler = DistributedSampler(
             flexible_dataset, 
@@ -116,7 +119,7 @@ def run_inference_workload(rank):
             sampler=sampler, 
             batch_size=args.batch_size
         )
-
+        
         latencies, run_start, run_end = run_standard_experiment(model, loader)
 
         path = f"{args.path}/{rank}"
