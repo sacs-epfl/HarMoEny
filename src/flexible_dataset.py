@@ -7,13 +7,14 @@ from torch.utils.data import Dataset
 
 
 class FlexibleDataset(Dataset):
-    def __init__(self, dataset_name, tokenizer, model, seq_len=120, num_samples=64, random_seed=32, model_name=None):
+    def __init__(self, dataset_name, tokenizer, model, seq_len=120, num_samples=64, random_seed=32, model_name=None, return_decoded=True):
         datasets.enable_caching()
 
         self.tokenizer = tokenizer
         self.max_length = seq_len
         self.dataset_option = dataset_name
         self.num_samples = num_samples
+        self.return_decoded = return_decoded
         self.is_switch = "switch" in model_name
         torch.manual_seed(random_seed)
 
@@ -122,6 +123,9 @@ class FlexibleDataset(Dataset):
         indices = torch.randint(0, self.pertinent_tokens.shape[0], (self.max_length,))
         text_encoded = self.pertinent_tokens[indices]
 
+        if self.return_decoded:
+            return self.tokenizer.decode(text_encoded)
+
         encoder_tokenized = {
             "input_ids": text_encoded,
             "attention_mask": (text_encoded != self.tokenizer.pad_token_id).long(),
@@ -135,21 +139,19 @@ class FlexibleDataset(Dataset):
         if self.is_switch:
             text_encoded = torch.full((self.max_length,), 8774) # 8774 is 'hello' in t5 tokenizer.
             text_encoded[-1] = 1
-            decoder_token = self.tokenizer.pad_token_id
-
-            encoder_tokenized = {
-                "input_ids": text_encoded,
-                "attention_mask": torch.full((self.max_length,), 1),
-                "decoder_input_ids": torch.tensor([decoder_token])
-            }
         else:
             text_encoded = torch.full((self.max_length,), 22557) # 22557 is 'hello' in mixtral
             text_encoded[0] = 1
-            
-            encoder_tokenized = {
-                "input_ids": text_encoded,
-                "attention_mask": torch.full((self.max_length,), 1),
-            }
+        
+        if self.return_decoded:
+            return self.tokenizer.decode(text_encoded)
+
+        encoder_tokenized = {
+            "input_ids": text_encoded,
+            "attention_mask": torch.full((self.max_length,), 1),
+        }
+        if self.is_switch:
+            encoder_tokenized["decoder_input_ids"] = torch.tensor([self.tokenizer.pad_token_id])
          
         return encoder_tokenized
     

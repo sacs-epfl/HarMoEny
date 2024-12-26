@@ -10,5 +10,7 @@ docker run -it \
     -v .:/workspace \
     -v $CACHE_PATH:/cache \
     -v ~/licenses/gurobi.lic:/opt/gurobi/gurobi.lic:ro \
+    -e HF_HOME=/cache \
+    -e TRANSFORMERS_CACHE=/cache \
     moe:latest \
     /bin/bash

@@ -1,4 +1,5 @@
-FROM nvcr.io/nvidia/pytorch:24.06-py3
+FROM nvcr.io/nvidia/pytorch:24.12-py3
+# was 24.06
 
 # Accept build arguments for user/group IDs
 ARG USER_ID
@@ -20,7 +21,9 @@ RUN pip install \
     datasets==3.0.2 \
     nvidia-ml-py3==7.352.0  \
     transformers==4.46.0  \
-    deepspeed==0.15.3 
+    deepspeed==0.15.3  \
+    vllm==0.6.5 \
+    deepspeed-mii==0.3.1
 
 RUN python3 -m pip install gurobipy==12.0.0
 
