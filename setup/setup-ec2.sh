@@ -30,6 +30,10 @@ sudo apt-get -y install cuda-toolkit-12-6
 # Cuda driver
 sudo apt-get install -y nvidia-open
 
+# Fabric manager
+sudo apt-get install -V nvidia-fabricmanager-565
+sudo systemctl start nvidia-fabricmanager
+
 # Container toolkit
 curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg \
   && curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
