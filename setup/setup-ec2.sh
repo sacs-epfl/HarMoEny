@@ -17,6 +17,10 @@ sudo apt-get update
 # Install latest version
 sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
+# Add user to docker
+sudo groupadd docker
+sudo usermod -aG docker $USER
+
 # Cuda toolkit
 wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
 sudo dpkg -i cuda-keyring_1.1-1_all.deb
