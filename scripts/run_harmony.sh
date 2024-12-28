@@ -78,4 +78,4 @@ python3 src/start_harmony.py \
         --world_size $world_size \
         --eq_tokens 1024 \
         --disable_async_fetch True \
-        --pa "outputs/harmony/run"
+        --pa "outputs/test"

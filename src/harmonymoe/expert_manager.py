@@ -157,6 +157,7 @@ class ExpertManager():
             slot_idx = idx % self.cache_size
 
             if self.cache[self.rank][slot_idx] != expert_idx:
+                print(f"(rank:{self.rank}) loading expert: {expert_idx}")
                 loaded = True
                 slot_idx = 0
                 event = torch.cuda.Event(enable_timing=False)

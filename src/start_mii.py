@@ -8,17 +8,17 @@ from flexible_dataset import FlexibleDataset
 
 num_iters = 10
 seq_len = 512
-batch_size = 128
-num_gpus = 8
+batch_size = 64
+num_gpus = 4
 output_dir = "../outputs/"
 
 pipe = pipeline("mistralai/Mixtral-8x7B-Instruct-v0.1") # max_length = seq_len + 1 (+1 for the generated)
 tokenizer = AutoTokenizer.from_pretrained("mistralai/Mixtral-8x7B-Instruct-v0.1", cache_dir="/cache")
 
-dataset = FlexibleDataset("random", tokenizer, None, seq_len=512, model_name="mixtral", num_samples=num_iters*batch_size*num_gpus, return_decoded=True)
+dataset = FlexibleDataset("random", tokenizer, None, seq_len=seq_len, model_name="mixtral", num_samples=num_iters*batch_size*num_gpus, return_decoded=True)
 
 loader = DataLoader(
-    dataset, 
+    dataset,
     batch_size=batch_size,
 )
 

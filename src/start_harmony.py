@@ -3,7 +3,7 @@ import torch.nn.functional as F
 import torch.nn as nn
 import torch.distributed as dist
 import torch.multiprocessing as mp 
-import pynvml
+import pynvml as nvml
 import psutil
 from threading import Thread
 import sys
@@ -70,7 +70,7 @@ parser.add_argument("--disable_async_fetch", default=False, type=str2bool, help=
 args = parser.parse_args()
 
 ############# GLOBAL AFFAIRS ################
-pynvml.nvmlInit()
+nvml.nvmlInit()
 #############################################
 
 def get_size(obj):
@@ -142,7 +142,7 @@ def run_inference_workload(rank, model, batch=args.batch_size):
         for l in get_moe_layers(model):
             l.prepare()
 
-        tokenizer = AutoTokenizer.from_pretrained(args.model_name, cache_dir="/cache")
+        tokenizer = AutoTokenizer.from_pretrained(args.model_name) #, cache_dir="/cache"
 
         flexible_dataset = FlexibleDataset(
             args.dataset, 
@@ -241,13 +241,13 @@ def cleanup():
     dist.destroy_process_group()
 
 def fetch_metrics(stop_event, output_list):
-    handles = [pynvml.nvmlDeviceGetHandleByIndex(index) for index in range(args.world_size)]
+    handles = [nvml.nvmlDeviceGetHandleByIndex(index) for index in range(args.world_size)]
 
     while not stop_event.is_set():
         output_list.append({
             "timestamp": time.time(),
-            "gpu_util": [pynvml.nvmlDeviceGetUtilizationRates(handle).gpu for handle in handles],
-            "gpu_mem_used": [pynvml.nvmlDeviceGetMemoryInfo(handle).used for handle in handles],
+            "gpu_util": [nvml.nvmlDeviceGetUtilizationRates(handle).gpu for handle in handles],
+            "gpu_mem_used": [nvml.nvmlDeviceGetMemoryInfo(handle).used for handle in handles],
             "cpu_util": psutil.cpu_percent(interval=None),
             "cpu_mem_used": psutil.virtual_memory().used,
         })
@@ -264,7 +264,7 @@ def signal_handler(sig, frame):
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, signal_handler)
 
-    model = AutoModel.from_pretrained(args.model_name, cache_dir="/cache")
+    model = AutoModel.from_pretrained(args.model_name) #, cache_dir="/cache"
     experts = get_moe_experts(model, args.type_moe, args.name_experts)
     experts.share_memory()
     config = MoEConfig(
@@ -333,4 +333,4 @@ if __name__ == "__main__":
 
     print("All done :)")
 
-    pynvml.nvmlShutdown()
+    nvml.nvmlShutdown()

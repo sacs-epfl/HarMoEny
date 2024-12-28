@@ -13,6 +13,9 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
+# Remove old nvml
+RUN pip uninstall -y pynvml
+
 # Install system-wide packages
 RUN pip install \
     setuptools==75.6.0 \
