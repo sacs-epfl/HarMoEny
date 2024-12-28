@@ -149,7 +149,8 @@ def run_inference_workload(rank, model, batch=args.batch_size):
             tokenizer, 
             model, 
             seq_len=args.seq_len,
-            num_samples=args.num_samples
+            num_samples=args.num_samples,
+            model_name=args.model_name,
         )
         sampler = DistributedSampler(
             flexible_dataset, 
@@ -265,6 +266,7 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, signal_handler)
 
     model = AutoModel.from_pretrained(args.model_name) #, cache_dir="/cache"
+
     experts = get_moe_experts(model, args.type_moe, args.name_experts)
     experts.share_memory()
     config = MoEConfig(
@@ -277,6 +279,8 @@ if __name__ == "__main__":
         world_size=args.world_size,
         expert_placement=args.expert_placement,
         disable_async_fetch=args.disable_async_fetch,
+        model_name=args.model_name,
+        num_experts=args.num_experts,
     )
     router = None 
     if args.enable_router_skew:
@@ -288,10 +292,16 @@ if __name__ == "__main__":
         args.name_router, 
         experts,
         config,
-        router=router,
+        override_router=router,
     )
 
     print("HERE")
+    layers = get_moe_layers(model)
+    # print(layers)
+    # print(len(layers))
+    # exit(0)
+
+
     
     # if args.batch_size == None:
     #     manager = mp.Manager()

@@ -73,6 +73,7 @@ python3 src/start_harmony.py \
         --batch_size $batch_size \
         --seq_len $seq_len \
         --model_name "google/switch-base-$num_experts" \
+        --num_experts $num_experts \
         --scheduling_policy "harmony" \
         --expert_cache_size 16 \
         --world_size $world_size \

@@ -41,6 +41,7 @@ class ExpertManager():
         self.rank = dist.get_rank()
         self.world_size = dist.get_world_size()
         self.num_experts_per_gpu = self.num_experts // self.world_size
+        #print(f"Num experts per gpu: {self.num_experts_per_gpu}")
         self.load_stream = torch.cuda.Stream()
         self.comp_stream = torch.cuda.Stream()
 
@@ -52,7 +53,7 @@ class ExpertManager():
        # self.slot_streams = [torch.cuda.Stream() for _ in range(self.cache_size)]
 
         self.cached_experts = [copy.deepcopy(self.experts[0]).cuda() for _ in range(self.cache_size)]
-        self.buffer_expert = copy.deepcopy(self.experts[0]).cuda()
+        #self.buffer_expert = copy.deepcopy(self.experts[0]).cuda()
         self.is_slot_loaded = [torch.cuda.Event(enable_timing=False) for _ in range(self.cache_size)]
         self.slot_finished_executing_events = [torch.cuda.Event(enable_timing=False) for _ in range(self.cache_size)]
 
@@ -63,7 +64,7 @@ class ExpertManager():
             self.load_expert_into_slot(expert_idx, slot_idx)
 
         #self.start_responder_thread()
-
+        #print("MADE IT HERE")
         return self
 
     def cpu(self):
@@ -157,7 +158,7 @@ class ExpertManager():
             slot_idx = idx % self.cache_size
 
             if self.cache[self.rank][slot_idx] != expert_idx:
-                print(f"(rank:{self.rank}) loading expert: {expert_idx}")
+                #print(f"(rank:{self.rank}) loading expert: {expert_idx}")
                 loaded = True
                 slot_idx = 0
                 event = torch.cuda.Event(enable_timing=False)

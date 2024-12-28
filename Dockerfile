@@ -41,6 +41,9 @@ RUN git clone https://github.com/laekov/fastmoe.git /workspace/fastmoe && \
     git submodule update --init --recursive && \
     pip install .
 
+# Reinstall flash-attn
+RUN pip install flash_attn==2.7.2.post1 -U --force-reinstall
+
 # Create Triton directory
 RUN mkdir -p /.triton/autotune
 

@@ -7,7 +7,7 @@ from torch.utils.data import Dataset
 
 
 class FlexibleDataset(Dataset):
-    def __init__(self, dataset_name, tokenizer, model, seq_len=120, num_samples=64, random_seed=32, model_name=None, return_decoded=True):
+    def __init__(self, dataset_name, tokenizer, model, seq_len=120, num_samples=64, random_seed=32, model_name=None, return_decoded=False):
         datasets.enable_caching()
 
         self.tokenizer = tokenizer
@@ -119,7 +119,6 @@ class FlexibleDataset(Dataset):
         return encoder_tokenized
     
     def _generate_random_entry(self):
-
         indices = torch.randint(0, self.pertinent_tokens.shape[0], (self.max_length,))
         text_encoded = self.pertinent_tokens[indices]
 
@@ -128,9 +127,11 @@ class FlexibleDataset(Dataset):
 
         encoder_tokenized = {
             "input_ids": text_encoded,
-            "attention_mask": (text_encoded != self.tokenizer.pad_token_id).long(),
-            "decoder_input_ids": torch.tensor([self.tokenizer.pad_token_id])
+            "attention_mask": torch.full((self.max_length,), 1),
         }
+
+        if self.is_switch:
+            encoder_tokenized["decoder_input_ids"] = torch.tensor([self.tokenizer.pad_token_id])
 
         return encoder_tokenized
     

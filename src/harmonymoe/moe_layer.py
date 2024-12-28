@@ -2,6 +2,7 @@ from .scheduler import Scheduler
 from .expert_manager import ExpertManager
 
 import torch.nn as nn
+import torch.nn.functional as F
 import torch
 import torch.distributed as dist 
 
@@ -20,6 +21,8 @@ class MoEConfig:
     world_size: int = 1
     expert_placement: list = None
     disable_async_fetch: bool = False
+    model_name: str = None
+    num_experts: int = 8
 
 class MoELayer(nn.Module):
     def __init__(self, router, experts, config=MoEConfig):
@@ -31,9 +34,11 @@ class MoELayer(nn.Module):
         self.layer_idx = config.layer_idx
 
         self.num_experts = len(experts)
+       # print(f"NUMBER OF EXPERTS: {self.num_experts}")
         self.num_gpus = config.world_size
         self.d_model = config.d_model
-        experts = self.pin_experts_to_pinned_memory(experts)
+        self.is_switch = "switch" in config.model_name
+        #experts = self.pin_experts_to_pinned_memory(experts)
 
         # For statistics 
         self.tot_num_toks_send = []
@@ -79,10 +84,12 @@ class MoELayer(nn.Module):
     # This is called on all modules to apply certain functions such as cuda
     def _apply(self, fn):
         try:
+            #print("Made it to apply router")
             fn(self.router)
         except:
             pass
         try:
+           # print("Made it to apply expert")
             fn(self.expert_manager)
         except Exception as e:
             print(f"Error applying function '{repr(fn)}' to 'expert_manager': {e}")
@@ -136,13 +143,27 @@ class MoELayer(nn.Module):
     def forward(self, hidden_states):
         self.start_pass.record()
 
+        #if self.is_switch:
         router_mask, router_probs, router_logits = self.router(hidden_states)
         # router_mask has dim (batch_size, seq_len, num_experts)
         # Entry will be a 1 on which expert to work on for the specific token
         # at specific sequence index on specific sample, rest will be 0
-        
+    
         expert_index = torch.argmax(router_mask, dim=-1)
         router_mask = router_mask.bool()
+        # else:
+        #     batch_size, sequence_length, hidden_dim = hidden_states.shape
+        #     hidden_states = hidden_states.view(-1, hidden_dim)
+        #     router_logits = self.router(hidden_states)
+
+        #     router_probs = F.softmax(router_logits, dim=1, dtype=torch.float)
+        #     router_probs, selected_experts = torch.topk(router_probs, 1, dim=-1) # top-k = 2
+        #     router_probs /= router_probs.sum(dim=-1, keepdim=True)
+            
+        #     # we cast back to the input dtype
+        #     router_probs = router_probs.to(hidden_states.dtype)
+
+        #     router_mask = torch.nn.functional.one_hot(selected_experts, num_classes=self.num_experts).permute(2, 1, 0)
 
         expert_indices = [router_mask[:,:,j].nonzero(as_tuple=True) for j in range(self.num_experts)]
 
@@ -208,4 +229,6 @@ class MoELayer(nn.Module):
         self.second_transfer_latencies.append(self.start_second_transfer.elapsed_time(self.end_second_transfer))
 
         hidden_states = router_probs * hidden_states
+        # if not self.is_switch:
+        #     hidden_states = hidden_states.view(batch_size, sequence_length, hidden_dim)
         return hidden_states, (router_logits, expert_index)
