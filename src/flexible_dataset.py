@@ -7,7 +7,7 @@ from torch.utils.data import Dataset
 
 
 class FlexibleDataset(Dataset):
-    def __init__(self, dataset_name, tokenizer, model, seq_len=120, num_samples=64, random_seed=32, model_name=None, return_decoded=False):
+    def __init__(self, dataset_name, tokenizer, model, seq_len=120, num_samples=64, random_seed=32, model_name=None, return_decoded=False, cache_dir="/cache"):
         datasets.enable_caching()
 
         self.tokenizer = tokenizer
@@ -15,31 +15,31 @@ class FlexibleDataset(Dataset):
         self.dataset_option = dataset_name
         self.num_samples = num_samples
         self.return_decoded = return_decoded
-        self.is_switch = "switch" in model_name
+        self.is_switch = (model_name and "switch" in model_name)
         torch.manual_seed(random_seed)
 
         if self.dataset_option == "bookcorpus":
-            self.dataset = load_dataset("bookcorpus/bookcorpus", split=f"train[:{num_samples}]", streaming=False, trust_remote_code=True, cache_dir="/cache")
+            self.dataset = load_dataset("bookcorpus/bookcorpus", split=f"train[:{num_samples}]", streaming=False, trust_remote_code=True, cache_dir=cache_dir)
             self.dataset_length = len(self.dataset)
         elif self.dataset_option == "wikitext":
-            self.dataset = load_dataset("wikitext", "wikitext-103-raw-v1", split=f"train[:{num_samples}]", streaming=False, cache_dir="/cache")
+            self.dataset = load_dataset("wikitext", "wikitext-103-raw-v1", split=f"train[:{num_samples}]", streaming=False, cache_dir=cache_dir)
             self.dataset_length = len(self.dataset)
         elif self.dataset_option == "sst2":
-            self.dataset = load_dataset("glue", "sst2", split=f"train[:{num_samples}]", streaming=False, cache_dir="/cache")
+            self.dataset = load_dataset("glue", "sst2", split=f"train[:{num_samples}]", streaming=False, cache_dir=cache_dir)
             self.dataset_length = len(self.dataset)
         elif self.dataset_option == "wmt19":
-            self.dataset = load_dataset("wmt/wmt19", "de-en", split=f"train[:{num_samples}]", streaming=False, cache_dir="/cache")
+            self.dataset = load_dataset("wmt/wmt19", "de-en", split=f"train[:{num_samples}]", streaming=False, cache_dir=cache_dir)
             self.dataset_length = len(self.dataset)
         elif self.dataset_option == "arxiver":
-            self.dataset = load_dataset("neuralwork/arxiver", split=f"train[:{num_samples}]", streaming=False, cache_dir="/cache")
+            self.dataset = load_dataset("neuralwork/arxiver", split=f"train[:{num_samples}]", streaming=False, cache_dir=cache_dir)
             self.dataset_length = len(self.dataset)
         elif self.dataset_option == "cocktail":
             num_samples_each = (num_samples // 4)+1
             self.datasets = [
-                load_dataset("bookcorpus/bookcorpus", split=f"train[:{num_samples_each}]", streaming=False, trust_remote_code=True, cache_dir="/cache"),
-                load_dataset("wikitext", "wikitext-103-raw-v1", split=f"train[:{num_samples_each}]", streaming=False, cache_dir="/cache"),
-                load_dataset("wmt/wmt19", "de-en", split=f"train[:{num_samples_each}]", streaming=False, cache_dir="/cache"),
-                load_dataset("neuralwork/arxiver", split=f"train[:{num_samples_each}]", streaming=False, cache_dir="/cache"),
+                load_dataset("bookcorpus/bookcorpus", split=f"train[:{num_samples_each}]", streaming=False, trust_remote_code=True, cache_dir=cache_dir),
+                load_dataset("wikitext", "wikitext-103-raw-v1", split=f"train[:{num_samples_each}]", streaming=False, cache_dir=cache_dir),
+                load_dataset("wmt/wmt19", "de-en", split=f"train[:{num_samples_each}]", streaming=False, cache_dir=cache_dir),
+                load_dataset("neuralwork/arxiver", split=f"train[:{num_samples_each}]", streaming=False, cache_dir=cache_dir),
             ]
             self.dataset_lengths = [len(self.datasets[i]) for i in range(4)]
         elif self.dataset_option == "random":

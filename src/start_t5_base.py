@@ -10,7 +10,7 @@ import json
 from tqdm import tqdm
 import argparse
 
-from torch.utils.data import DataLoader, DistributedSampler
+from torch.utils.data import DataLoader
 from transformers import AutoTokenizer, AutoModel
 
 from flexible_dataset import FlexibleDataset
@@ -20,15 +20,16 @@ parser = argparse.ArgumentParser(
     prog="Run inference on t5",
 )
 parser.add_argument("--dataset", default="sst2", type=str)
-parser.add_argument("--num_samples", default=0, type=int, help="Number of total samples across all GPUs")
-parser.add_argument("--batch_size", default=250, type=int, help="Batch size per GPU")
-parser.add_argument("--seq_len", default=120, type=int)
-parser.add_argument("--path", default=None, type=str, help="Specify where to save path")
-parser.add_argument("--warmup_rounds", default=3, type=int)
+parser.add_argument("--num-samples", default=64, type=int, help="Number of total samples across all GPUs")
+parser.add_argument("--batch-size", default=250, type=int, help="Batch size per GPU")
+parser.add_argument("--seq-len", default=120, type=int)
+parser.add_argument("--path", default=None, required=True, type=str, help="Specify where to save path")
+parser.add_argument("--warmup-rounds", default=3, type=int)
+parser.add_argument("--cache-dir", default="/cache", type=str, help="The cache dir for data and models")
 args = parser.parse_args()
 
 def run_inference_workload():
-    model = AutoModel.from_pretrained("google-t5/t5-base", cache_dir="/cache")
+    model = AutoModel.from_pretrained("google-t5/t5-base", cache_dir=args.cache_dir)
 
     def add_timing_model(model, idx):
         if type(model).__name__ == "T5LayerFF":
@@ -45,14 +46,15 @@ def run_inference_workload():
     model.cuda()
     model.eval()
 
-    tokenizer = AutoTokenizer.from_pretrained("google-t5/t5-base", cache_dir="/cache")
+    tokenizer = AutoTokenizer.from_pretrained("google-t5/t5-base", cache_dir=args.cache_dir)
 
     flexible_dataset = FlexibleDataset(
         args.dataset, 
         tokenizer, 
         model, 
         seq_len=args.seq_len,
-        num_samples=args.num_samples
+        num_samples=args.num_samples,
+        cache_dir=args.cache_dir,
     )
     loader = DataLoader(
         flexible_dataset, 
