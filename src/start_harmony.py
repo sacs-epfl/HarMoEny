@@ -1,11 +1,7 @@
 import torch
-import torch.nn.functional as F
 import torch.nn as nn
 import torch.distributed as dist
 import torch.multiprocessing as mp 
-import pynvml as nvml
-import psutil
-from threading import Thread
 import sys
 import os 
 from datetime import datetime, timedelta
@@ -13,21 +9,16 @@ import time
 import csv
 import stat 
 import json
-import numpy as np
-import pandas as pd
 import signal
-import math
-import random
 from tqdm import tqdm
-from copy import deepcopy
 import argparse
 import logging
 
-from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from torch.utils.data import DataLoader, DistributedSampler
 from transformers import AutoTokenizer, AutoModel
 
 from flexible_dataset import FlexibleDataset
+from stats import Stats
 
 from harmonymoe.utils import replace_moe_layer, get_moe_experts, get_moe_layers
 from harmonymoe.moe_layer import MoEConfig, MoELayer
@@ -70,9 +61,7 @@ parser.add_argument("--random_router_skew", default=False, type=str2bool, help="
 parser.add_argument("--disable_async_fetch", default=False, type=str2bool, help="Whether want to disable the background expert fetching")
 args = parser.parse_args()
 
-############# GLOBAL AFFAIRS ################
-nvml.nvmlInit()
-
+############# LOGGING ################
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -204,21 +193,6 @@ def run_standard_experiment(model, loader):
     
     return latencies, run_start, run_end
 
-
-def fetch_metrics(stop_event, output_list):
-    handles = [nvml.nvmlDeviceGetHandleByIndex(index) for index in range(args.world_size)]
-
-    while not stop_event.is_set():
-        output_list.append({
-            "timestamp": time.time(),
-            "gpu_util": [nvml.nvmlDeviceGetUtilizationRates(handle).gpu for handle in handles],
-            "gpu_mem_used": [nvml.nvmlDeviceGetMemoryInfo(handle).used for handle in handles],
-            "cpu_util": psutil.cpu_percent(interval=None),
-            "cpu_mem_used": psutil.virtual_memory().used,
-        })
-
-        time.sleep(1)
-
 def signal_handler(sig, frame):
     logger.info("Main process received Ctrl+C! Terminating all child processes...")
     for child in mp.active_children():
@@ -263,11 +237,9 @@ if __name__ == "__main__":
 
     logger.info("Finished loading model")
 
-    metrics = []
-    stop_event = mp.Event()
 
-    metric_thread = Thread(target=fetch_metrics, args=(stop_event, metrics))
-    metric_thread.start()
+    stats = Stats(gpu=True, cpu=True, num_gpus=args.world_size)
+    stats.start()
 
     processes = []
     mp.set_start_method("spawn", force=True)
@@ -277,16 +249,9 @@ if __name__ == "__main__":
         processes.append(p)
     for p in processes:
         p.join()
-    logger.info("All processes complete. Terminating GPU collection stats")
+    logger.info("All processes complete")
 
-    stop_event.set()
-    metric_thread.join()
-    logger.info("GPU collection stopped")
-    
-    logger.info("Saving GPU stats")
-    df = pd.DataFrame(metrics)
-    df.to_csv(f"{args.path}/stats.csv")
+    stats.stop()
+    stats.save(path=args.path)
 
     logger.info("All done :)")
-
-    nvml.nvmlShutdown()
