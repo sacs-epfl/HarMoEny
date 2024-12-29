@@ -20,3 +20,8 @@ python3 plot_experiment.py num_gpus paths_to_collected_traces
 # Adding new scheduling policies
 `vim transformers/src/transformers/models/switch_transformers/modeling_switch_transformers.py `
 Under class SwitchTransformersSparseMLP create a new function and update match statement to include new policy
+
+# Formatting
+```bash
+black {file}
+```
