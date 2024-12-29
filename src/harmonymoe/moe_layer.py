@@ -31,7 +31,7 @@ class MoELayer(nn.Module):
         super(MoELayer, self).__init__()
 
         self.router = router
-        self.experts = experts # stays on CPU
+        self.experts = experts  # stays on CPU
 
         self.config = config
         self.layer_idx = config.layer_idx
@@ -40,7 +40,6 @@ class MoELayer(nn.Module):
         self.num_gpus = config.world_size
         self.d_model = config.d_model
         self.is_switch = "switch" in config.model_name
-        # experts = self.pin_experts_to_pinned_memory(experts)
 
         # For statistics
         self.tot_num_toks_send = []
@@ -54,30 +53,6 @@ class MoELayer(nn.Module):
         self.computation_latencies = []
 
         self.expert_freqs = []
-
-    # Wonder if this should be done here?
-    # def pin_experts_to_pinned_memory(self, experts):
-    #     pinned_experts = []
-    #     for expert in experts:
-    #         for param in expert.parameters():
-    #             param.data = param.data.pin_memory()
-    #         pinned_experts.append(expert)
-    #     return nn.ModuleList(pinned_experts)
-
-    # # This is called on all modules to apply certain functions such as cuda
-    # def _apply(self, fn):
-    #     try:
-    #         # print("Made it to apply router")
-    #         fn(self.router)
-    #     except:
-    #         pass
-    #     try:
-    #         # print("Made it to apply expert")
-    #         fn(self.expert_manager)
-    #     except Exception as e:
-    #         print(f"Error applying function '{repr(fn)}' to 'expert_manager': {e}")
-
-    #     return self
 
     def prepare(self):
         self.rank = dist.get_rank()
@@ -113,10 +88,9 @@ class MoELayer(nn.Module):
             layer_idx=self.layer_idx,
         )
 
-
     def get_statistics(self):
         stats = []
-        #expert_manager_stats = self.expert_manager.get_statistics()
+        # expert_manager_stats = self.expert_manager.get_statistics()
         for i in range(len(self.tot_num_toks_send)):
             dic = {
                 "latency (ms)": self.latencies[i],

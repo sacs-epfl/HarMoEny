@@ -1,6 +1,7 @@
 import torch
 import nvtx
 
+
 class AsynchronousCPU:
     def __init__(self, config):
         self.config = config
@@ -10,9 +11,11 @@ class AsynchronousCPU:
         self.expert_finished_executing_events = [
             torch.cuda.Event(enable_timing=False) for _ in range(config.num_experts)
         ]
-        
+
     def load_expert_into_slot(self, expert_idx, slot_idx):
-        with nvtx.annotate(f"Loading expert {expert_idx} into slot {slot_idx}", color="green"):
+        with nvtx.annotate(
+            f"Loading expert {expert_idx} into slot {slot_idx}", color="green"
+        ):
             with torch.no_grad():
                 with torch.cuda.stream(self.load_stream):
                     pinned_state_dict = self.config.experts[expert_idx].state_dict()
@@ -20,7 +23,9 @@ class AsynchronousCPU:
                     for name, param in cached_expert.named_parameters():
                         cpu_param = pinned_state_dict[name]
                         param.copy_(cpu_param, non_blocking=True)
-                    self.config.expert_loaded_events[expert_idx].record(stream=self.load_stream)
+                    self.config.expert_loaded_events[expert_idx].record(
+                        stream=self.load_stream
+                    )
 
     # TODO instead of calling .cache figure out what is loaded already
     def execute_job(self, tokens, expert_mask, schedule=None):
@@ -39,14 +44,18 @@ class AsynchronousCPU:
             slot_idx = idx % self.config.cache_size
 
             if expert_idx != self.config.cache[self.config.rank][slot_idx]:
-                self.comp_stream.wait_event(self.config.expert_loaded_events[expert_idx])
+                self.comp_stream.wait_event(
+                    self.config.expert_loaded_events[expert_idx]
+                )
 
-            with nvtx.annotate(f"Executing expert {expert_idx} on slot {slot_idx}", color="blue"):
+            with nvtx.annotate(
+                f"Executing expert {expert_idx} on slot {slot_idx}", color="blue"
+            ):
                 with torch.cuda.stream(self.comp_stream):
                     # Execute the expert on the tokens
-                    tokens[expert_mask[expert_idx]] = self.config.cached_experts[slot_idx](
-                        tokens[expert_mask[expert_idx]]
-                    )
+                    tokens[expert_mask[expert_idx]] = self.config.cached_experts[
+                        slot_idx
+                    ](tokens[expert_mask[expert_idx]])
             # Record that the expert has finished executing
             self.expert_finished_executing_events[expert_idx].record(
                 stream=self.comp_stream
@@ -63,6 +72,8 @@ class AsynchronousCPU:
                 )
 
         for stale_slot in stale_slots:
-            self.load_expert_into_slot(self.config.cache[self.config.rank][stale_slot], stale_slot)
+            self.load_expert_into_slot(
+                self.config.cache[self.config.rank][stale_slot], stale_slot
+            )
 
         return tokens

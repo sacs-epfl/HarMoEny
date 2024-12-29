@@ -1,12 +1,15 @@
 import torch
 import nvtx
 
-class SynchronousCPU:   
+
+class SynchronousCPU:
     def __init__(self, config):
         self.config = config
 
     def load_expert_into_slot_no_async(self, expert_idx, slot_idx):
-        with nvtx.annotate(f"Loading expert {expert_idx} into slot {slot_idx}", color="green"):
+        with nvtx.annotate(
+            f"Loading expert {expert_idx} into slot {slot_idx}", color="green"
+        ):
             with torch.no_grad():
                 pinned_state_dict = self.config.experts[expert_idx].state_dict()
                 cached_expert = self.config.cached_experts[slot_idx]
@@ -46,6 +49,8 @@ class SynchronousCPU:
             )
 
         if loaded:
-            self.load_expert_into_slot_no_async(self.config.cache[self.config.rank][0], 0)
+            self.load_expert_into_slot_no_async(
+                self.config.cache[self.config.rank][0], 0
+            )
 
         return tokens

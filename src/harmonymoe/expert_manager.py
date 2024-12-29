@@ -26,41 +26,27 @@ class ExpertManager:
         self.rank = dist.get_rank()
         self.fetching_strategy = fetching_strategy
 
-        # self.disable_async_fetch = disable_async_fetch
-        # self.gpu_fetch = gpu_fetch
-
         self.validate_arguments()
 
         self.rng = random.Random(32)
-
-        # self.num_swaps = 0
-        # self.num_swaps_iters = []
 
         self.world_size = dist.get_world_size()
         self.num_experts_per_gpu = self.num_experts // self.world_size
         self.load_stream = torch.cuda.Stream()
         self.comp_stream = torch.cuda.Stream()
 
-        # self.first_slot_expert_idx = self.cache[self.rank][0]
-        # self.last_slot_expert_idx = self.cache[self.rank][-1]
-
         self.cached_experts = [
             copy.deepcopy(self.experts[0]).cuda() for _ in range(self.cache_size)
         ]
-        self.buffer_expert = copy.deepcopy(self.experts[0]).cuda() if self.fetching_strategy == "gpu" else None
-        # self.is_slot_loaded = [
-        #     torch.cuda.Event(enable_timing=False) for _ in range(self.cache_size)
-        # ]
-        # self.slot_finished_executing_events = [
-        #     torch.cuda.Event(enable_timing=False) for _ in range(self.cache_size)
-        # ]
+        self.buffer_expert = (
+            copy.deepcopy(self.experts[0]).cuda()
+            if self.fetching_strategy == "gpu"
+            else None
+        )
 
         self.expert_loaded_events = [
             torch.cuda.Event(enable_timing=False) for _ in range(self.num_experts)
         ]
-        # self.expert_finished_executing_events = [
-        #     torch.cuda.Event(enable_timing=False) for _ in range(self.num_experts)
-        # ]
 
         for slot_idx, expert_idx in enumerate(self.cache[self.rank]):
             self.load_expert_into_slot(expert_idx, slot_idx)
@@ -86,16 +72,9 @@ class ExpertManager:
         elif fetching_strategy == "gpu":
             self.executor = fetching_strategies.GPU(config)
         else:
-            raise NotImplementedError(f"Strategy {fetching_strategy} is not implemented")
-
-        # self.executor = (
-        #     self.execute_job
-        #     if not self.disable_async_fetch
-        #     else self.execute_job_no_async
-        # )
-
-    # def get_statistics(self):
-    #     return {"number expert swaps": self.num_swaps_iters[:]}
+            raise NotImplementedError(
+                f"Strategy {fetching_strategy} is not implemented"
+            )
 
     def load_expert_into_slot(self, expert_idx, slot_idx):
         with torch.no_grad():

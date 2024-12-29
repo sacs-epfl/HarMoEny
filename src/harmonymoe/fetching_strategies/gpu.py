@@ -2,8 +2,6 @@ import torch
 import nvtx
 import torch.distributed as dist
 
-import logging
-logger = logging.getLogger(__name__)
 
 class GPU:
     def __init__(self, config):
@@ -11,7 +9,9 @@ class GPU:
 
         self.num_experts_per_gpu = self.config.num_experts // self.config.world_size
         self.work_order = self.generate_work_order()
-        self.total_param_size = sum(p.numel() for p in self.config.buffer_expert.parameters())
+        self.total_param_size = sum(
+            p.numel() for p in self.config.buffer_expert.parameters()
+        )
 
         self.load_stream = torch.cuda.Stream()
         self.comp_stream = torch.cuda.Stream()
@@ -25,7 +25,9 @@ class GPU:
 
     def get_expert_processing_ranks(self, schedule):
         return schedule[
-            :, self.config.first_slot_expert_idx : self.config.last_slot_expert_idx + 1, :
+            :,
+            self.config.first_slot_expert_idx : self.config.last_slot_expert_idx + 1,
+            :,
         ].sum(dim=0)
 
     def flatten_params(self, params):
@@ -52,23 +54,20 @@ class GPU:
                         flattened = self.flatten_params(
                             self.config.cached_experts[j].parameters()
                         )
-                    #logger.info(f"gpu {self.config.rank} sending expert {j} to gpu {k}")
                     req = dist.isend(flattened, dst=k)
-                    #logger.info(f"gpu {self.config.rank} finished issuing send for expert {j} to gpu {k}")
                     send_requests.append(req)
 
-            #logger.info(f"gpu {self.config.rank} begin waiting")
             for req in send_requests:
                 req.wait()  # Synchronize sends
 
     def request_expert_weights(self, expert_idx):
         with torch.no_grad():
             rank = expert_idx // self.num_experts_per_gpu
-            #logger.info(f"gpu {self.config.rank} waiting expert {expert_idx} from gpu {rank}")
-            flattened = torch.zeros(self.total_param_size, dtype=torch.float, device="cuda")
+            flattened = torch.zeros(
+                self.total_param_size, dtype=torch.float, device="cuda"
+            )
             req = dist.irecv(flattened, src=rank)
             req.wait()  # Synchronize receive
-            #logger.info(f"gpu {self.config.rank} received expert {expert_idx} from gpu {rank}")
 
             self.unflatten_params(flattened, self.config.buffer_expert.parameters())
 
