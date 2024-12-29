@@ -60,9 +60,12 @@
 #         --eq_tokens 1024 \
 #         --pa "outputs/harmony/run"
 
-num_samples=2560
+
+datetime=$(date +"%Y-%m-%d_%H-%M")
+
+num_samples=1280
 seq_len=512
-batch_size=64
+batch_size=16
 world_size=8
 num_experts=128
 
@@ -77,6 +80,6 @@ python3 src/start_harmony.py \
         --scheduling_policy "harmony" \
         --expert_cache_size 16 \
         --world_size $world_size \
-        --eq_tokens 1024 \
+        --eq_tokens 256 \
         --disable_async_fetch True \
-        --pa "outputs/test"
+        --pa "outputs/harmony/$datetime"

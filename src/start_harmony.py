@@ -21,6 +21,7 @@ import random
 from tqdm import tqdm
 from copy import deepcopy
 import argparse
+import logging
 
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from torch.utils.data import DataLoader, DistributedSampler
@@ -71,15 +72,13 @@ args = parser.parse_args()
 
 ############# GLOBAL AFFAIRS ################
 nvml.nvmlInit()
-#############################################
 
-def get_size(obj):
-    obj.cuda()
-    torch.cuda.synchronize()
-    memory_allocated = torch.cuda.memory_allocated(device=0)
-    obj.cpu()
-    torch.cuda.synchronize()
-    return memory_allocated
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
+#############################################
 
 def setup(rank, timeout=timedelta(minutes=30)):
     os.environ["HF_HOME"] = "/cache"
@@ -93,41 +92,9 @@ def setup(rank, timeout=timedelta(minutes=30)):
 
     dist.init_process_group("nccl", rank=rank, world_size=args.world_size, timeout=timeout)
 
-def check_inference(model, batch):
-    try:
-        batch = {k: v.cuda() for k, v in batch.items()}
-        with torch.no_grad():
-            model(**batch)
-        success = True
-        print("SUCCESS")
-    except Exception as e:
-        print(f"/////////////BIG ERROR: {str(e)}")
-        success = False
-        print("FAIL")
-    finally:
-        torch.cuda.empty_cache()
-        return success
-
-def compute_batch_size(model, dataset, sampler):
-    batch = args.start_batch_size
-    incr = 20
-
-    while True:
-        test = batch + incr
-        print(f"TESTING {test}")
-        dataloader = DataLoader(
-            dataset,
-            sampler=sampler,
-            batch_size=test,
-        )
-        if check_inference(model, next(iter(dataloader))):
-            batch = test
-        else:
-            return batch
-
 def run_inference_workload(rank, model, batch=args.batch_size):
     try:
-        print("HERE2")
+        logger.info(f"Starting process {rank}")
         args.batch_size = batch
 
         mp.current_process().name = f'Worker-{rank}'
@@ -207,11 +174,10 @@ def run_inference_workload(rank, model, batch=args.batch_size):
             with open(f"{args.path}/data.json", "w") as f:
                 json.dump({ "start": run_start, "end": run_end, **run_info}, f, indent=4)
 
-
     except KeyboardInterrupt:
-        print(f"Worker {rank} received KeyboardInterrupt, shutting down...")
+        logger.info(f"Worker {rank} received KeyboardInterrupt, shutting down...")
     finally:
-        cleanup()
+        dist.destroy_process_group()
 
 def run_standard_experiment(model, loader):
     latencies = []
@@ -238,8 +204,6 @@ def run_standard_experiment(model, loader):
     
     return latencies, run_start, run_end
 
-def cleanup():
-    dist.destroy_process_group()
 
 def fetch_metrics(stop_event, output_list):
     handles = [nvml.nvmlDeviceGetHandleByIndex(index) for index in range(args.world_size)]
@@ -256,16 +220,18 @@ def fetch_metrics(stop_event, output_list):
         time.sleep(1)
 
 def signal_handler(sig, frame):
-    print("Main process received Ctrl+C! Terminating all child processes...")
+    logger.info("Main process received Ctrl+C! Terminating all child processes...")
     for child in mp.active_children():
-         print(f"Terminating child process PID: {child.pid}")
+         logger.info(f"Terminating child process PID: {child.pid}")
          child.terminate()
     sys.exit(0)
 
 if __name__ == "__main__":
+    logging.info("Starting main process")
+
     signal.signal(signal.SIGINT, signal_handler)
 
-    model = AutoModel.from_pretrained(args.model_name) #, cache_dir="/cache"
+    model = AutoModel.from_pretrained(args.model_name)
 
     experts = get_moe_experts(model, args.type_moe, args.name_experts)
     experts.share_memory()
@@ -295,30 +261,7 @@ if __name__ == "__main__":
         override_router=router,
     )
 
-    print("HERE")
-    layers = get_moe_layers(model)
-    # print(layers)
-    # print(len(layers))
-    # exit(0)
-
-
-    
-    # if args.batch_size == None:
-    #     manager = mp.Manager()
-    #     batch_sizes = manager.list()
-
-    #     processes = []
-    #     mp.set_start_method("spawn", force=True)
-    #     for i in range(args.world_size):
-    #         p = mp.Process(target=find_batch_size, args=(i, model, batch_sizes))
-    #         p.start()
-    #         processes.append(p)
-    #     for p in processes:
-    #         p.join()
-
-    #     args.batch_size = min(batch_sizes)
-
-    print(f"NEW BATCH SIZE: {args.batch_size}")
+    logger.info("Finished loading model")
 
     metrics = []
     stop_event = mp.Event()
@@ -334,13 +277,16 @@ if __name__ == "__main__":
         processes.append(p)
     for p in processes:
         p.join()
+    logger.info("All processes complete. Terminating GPU collection stats")
 
     stop_event.set()
     metric_thread.join()
-
+    logger.info("GPU collection stopped")
+    
+    logger.info("Saving GPU stats")
     df = pd.DataFrame(metrics)
     df.to_csv(f"{args.path}/stats.csv")
 
-    print("All done :)")
+    logger.info("All done :)")
 
     nvml.nvmlShutdown()
