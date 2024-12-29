@@ -20,11 +20,11 @@ parser = argparse.ArgumentParser(
     prog="Run inference on t5",
 )
 parser.add_argument("--dataset", default="sst2", type=str)
-parser.add_argument("--num_samples", default=64, type=int, help="Number of total samples across all GPUs")
-parser.add_argument("--batch_size", default=250, type=int, help="Batch size per GPU")
-parser.add_argument("--seq_len", default=120, type=int)
+parser.add_argument("--num-samples", default=64, type=int, help="Number of total samples across all GPUs")
+parser.add_argument("--batch-size", default=250, type=int, help="Batch size per GPU")
+parser.add_argument("--seq-len", default=120, type=int)
 parser.add_argument("--path", default=None, required=True, type=str, help="Specify where to save path")
-parser.add_argument("--warmup_rounds", default=3, type=int)
+parser.add_argument("--warmup-rounds", default=3, type=int)
 parser.add_argument("--cache-dir", default="/cache", type=str, help="The cache dir for data and models")
 args = parser.parse_args()
 
