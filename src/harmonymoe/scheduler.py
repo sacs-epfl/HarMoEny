@@ -19,6 +19,10 @@ class Scheduler():
         self.expert_to_gpu = None
         self.gpu_to_experts_list = None 
 
+        self.rank = dist.get_rank()
+        if self.expert_to_gpu is not None:
+            self.expert_to_gpu.cuda()
+
         match scheduling_policy:
             case "deepspeed":
                 self.scheduler = self.schedule_fixed
@@ -54,11 +58,6 @@ class Scheduler():
         if self.expert_to_gpu is not None and self.gpu_to_experts_list is None:
             self.gpu_to_experts_list = self.generate_expert_gpu_to_gpu_expert(self.expert_to_gpu)  
     
-    def prepare(self):
-        self.rank = dist.get_rank()
-        if self.expert_to_gpu is not None:
-            self.expert_to_gpu.cuda()
-
     def get_cache(self):
         if self.gpu_to_experts_list is not None:
             return list(map(lambda x: list(map(lambda y: y.item(), x)), self.gpu_to_experts_list))

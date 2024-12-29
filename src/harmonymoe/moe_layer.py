@@ -20,7 +20,7 @@ class MoEConfig:
     d_model: int = 768
     world_size: int = 1
     expert_placement: list = None
-    disable_async_fetch: bool = False
+    fetching_strategy: str = "async-cpu"
     model_name: str = None
     num_experts: int = 8
 
@@ -31,11 +31,12 @@ class MoELayer(nn.Module):
         super(MoELayer, self).__init__()
 
         self.router = router
+        self.experts = experts # stays on CPU
 
+        self.config = config
         self.layer_idx = config.layer_idx
 
         self.num_experts = len(experts)
-        # print(f"NUMBER OF EXPERTS: {self.num_experts}")
         self.num_gpus = config.world_size
         self.d_model = config.d_model
         self.is_switch = "switch" in config.model_name
@@ -54,51 +55,32 @@ class MoELayer(nn.Module):
 
         self.expert_freqs = []
 
-        # Create our scheduler and exper manager
-        self.scheduler = Scheduler(
-            scheduling_policy=config.scheduling_policy,
-            num_experts=self.num_experts,
-            eq_tokens=config.eq_tokens,
-            d_model=self.d_model,
-            num_gpus=self.num_gpus,
-            expert_placement=config.expert_placement,
-            layer_idx=self.layer_idx,
-        )
+    # Wonder if this should be done here?
+    # def pin_experts_to_pinned_memory(self, experts):
+    #     pinned_experts = []
+    #     for expert in experts:
+    #         for param in expert.parameters():
+    #             param.data = param.data.pin_memory()
+    #         pinned_experts.append(expert)
+    #     return nn.ModuleList(pinned_experts)
 
-        self.expert_manager = ExpertManager(
-            experts,
-            config.expert_cache_size,
-            cache=self.scheduler.get_cache(),
-            disable_async_fetch=config.disable_async_fetch,
-            layer_idx=self.layer_idx,
-        )
+    # # This is called on all modules to apply certain functions such as cuda
+    # def _apply(self, fn):
+    #     try:
+    #         # print("Made it to apply router")
+    #         fn(self.router)
+    #     except:
+    #         pass
+    #     try:
+    #         # print("Made it to apply expert")
+    #         fn(self.expert_manager)
+    #     except Exception as e:
+    #         print(f"Error applying function '{repr(fn)}' to 'expert_manager': {e}")
 
-    def pin_experts_to_pinned_memory(self, experts):
-        pinned_experts = []
-        for expert in experts:
-            for param in expert.parameters():
-                param.data = param.data.pin_memory()
-            pinned_experts.append(expert)
-        return nn.ModuleList(pinned_experts)
-
-    # This is called on all modules to apply certain functions such as cuda
-    def _apply(self, fn):
-        try:
-            # print("Made it to apply router")
-            fn(self.router)
-        except:
-            pass
-        try:
-            # print("Made it to apply expert")
-            fn(self.expert_manager)
-        except Exception as e:
-            print(f"Error applying function '{repr(fn)}' to 'expert_manager': {e}")
-
-        return self
+    #     return self
 
     def prepare(self):
         self.rank = dist.get_rank()
-        self.scheduler.prepare()
 
         self.start_pass = torch.cuda.Event(enable_timing=True)
         self.end_pass = torch.cuda.Event(enable_timing=True)
@@ -113,9 +95,28 @@ class MoELayer(nn.Module):
         self.start_second_transfer = torch.cuda.Event(enable_timing=True)
         self.end_second_transfer = torch.cuda.Event(enable_timing=True)
 
+        self.scheduler = Scheduler(
+            scheduling_policy=self.config.scheduling_policy,
+            num_experts=self.num_experts,
+            eq_tokens=self.config.eq_tokens,
+            d_model=self.d_model,
+            num_gpus=self.num_gpus,
+            expert_placement=self.config.expert_placement,
+            layer_idx=self.layer_idx,
+        )
+
+        self.expert_manager = ExpertManager(
+            self.experts,
+            self.config.expert_cache_size,
+            cache=self.scheduler.get_cache(),
+            fetching_strategy=self.config.fetching_strategy,
+            layer_idx=self.layer_idx,
+        )
+
+
     def get_statistics(self):
         stats = []
-        expert_manager_stats = self.expert_manager.get_statistics()
+        #expert_manager_stats = self.expert_manager.get_statistics()
         for i in range(len(self.tot_num_toks_send)):
             dic = {
                 "latency (ms)": self.latencies[i],
@@ -149,10 +150,10 @@ class MoELayer(nn.Module):
                 "expert distribution": self.expert_freqs[i],
             }
 
-            for key in expert_manager_stats.keys():
-                _len = len(expert_manager_stats[key])
-                if _len != 0:
-                    dic[key] = expert_manager_stats[key][i] if i < _len else -1
+            # for key in expert_manager_stats.keys():
+            #     _len = len(expert_manager_stats[key])
+            #     if _len != 0:
+            #         dic[key] = expert_manager_stats[key][i] if i < _len else -1
 
             stats.append(dic)
         return stats

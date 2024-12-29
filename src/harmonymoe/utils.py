@@ -62,14 +62,30 @@ def _get_moe_layers(acc, model):
     return acc
 
 
+# def get_moe_experts(model, moe_type, experts_name):
+#     return _get_moe_experts(nn.ModuleList(), model, moe_type, experts_name)
+
+# def _get_moe_experts(acc, model, moe_type, experts_name):
+#     if type(model).__name__ == moe_type:
+#         experts = getattr(model, experts_name)
+#         if isinstance(experts, nn.ModuleDict):
+#             experts = nn.ModuleList(experts.values())
+#         acc.append(deepcopy(experts))
+#     else:
+#         for module in model.children():
+#             acc = _get_moe_experts(acc, module, moe_type, experts_name)
+#     return acc
+
 def get_moe_experts(model, moe_type, experts_name):
-    return _get_moe_experts(nn.ModuleList(), model, moe_type, experts_name)
+    return _get_moe_experts([], model, moe_type, experts_name)
 
 def _get_moe_experts(acc, model, moe_type, experts_name):
     if type(model).__name__ == moe_type:
         experts = getattr(model, experts_name)
         if isinstance(experts, nn.ModuleDict):
-            experts = nn.ModuleList(experts.values())
+            experts = list(experts.values())
+        elif isinstance(experts, nn.ModuleList):
+            experts = list(experts)
         acc.append(deepcopy(experts))
     else:
         for module in model.children():

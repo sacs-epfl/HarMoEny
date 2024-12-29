@@ -90,10 +90,10 @@ class Args:
             help="Whether to enable random skewing in the router",
         )
         parser.add_argument(
-            "--disable_async_fetch",
-            default=False,
-            type=str2bool,
-            help="Whether want to disable the background expert fetching",
+            "--expert_fetching_strategy",
+            default="async-cpu",
+            type=str,
+            help="The kind of expert fetching desired",
         )
 
         return parser.parse_args()

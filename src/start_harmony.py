@@ -167,7 +167,17 @@ if __name__ == "__main__":
     model = AutoModel.from_pretrained(args.model_name)
 
     experts = get_moe_experts(model, args.type_moe, args.name_experts)
-    experts.share_memory()
+
+    for layer_experts in experts:
+        for expert in layer_experts:
+            for param in expert.parameters():
+                param.data.share_memory_()
+
+    for layer_experts in experts:
+        for expert in layer_experts:
+            for param in expert.parameters():
+                param.data.pin_memory()
+
     config = MoEConfig(
         scheduling_policy=args.scheduling_policy,
         cache_policy=args.cache_policy,
@@ -176,10 +186,11 @@ if __name__ == "__main__":
         d_model=args.d_model,
         world_size=args.world_size,
         expert_placement=args.expert_placement,
-        disable_async_fetch=args.disable_async_fetch,
+        fetching_strategy=args.expert_fetching_strategy,
         model_name=args.model_name,
         num_experts=args.num_experts,
     )
+
     router = None
     if args.enable_router_skew:
         router = lambda: Router(
