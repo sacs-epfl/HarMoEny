@@ -15,6 +15,7 @@ seq_len = 512
 batch_size = 16
 num_gpus = 8
 output_dir = "../outputs/"
+cache_dir = "/cache"
 
 tokenizer = AutoTokenizer.from_pretrained("mistralai/Mixtral-8x7B-Instruct-v0.1", cache_dir="/cache")
 dataset = FlexibleDataset("random", tokenizer, None, seq_len=seq_len, model_name="mixtral", num_samples=num_iters*batch_size*num_gpus, return_decoded=True)
@@ -34,6 +35,9 @@ try:
         output = llm.generate(batch, sampling_params=sampling_params)
         end = time.time()
         times.append(end-start)
+
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir, exist_ok=True)
 
     with open(os.path.join(output_dir, "vllm.csv"), "w") as f:
         for i, time in enumerate(times):
