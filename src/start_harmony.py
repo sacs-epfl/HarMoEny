@@ -172,7 +172,6 @@ if __name__ == "__main__":
         scheduling_policy=args.scheduling_policy,
         cache_policy=args.cache_policy,
         expert_cache_size=args.expert_cache_size,
-        dynamic_components=args.dynamic_components,
         eq_tokens=args.eq_tokens,
         d_model=args.d_model,
         world_size=args.world_size,

@@ -62,13 +62,6 @@ class Args:
             help="module name of model decoder",
         )
         parser.add_argument(
-            "--dynamic_components",
-            nargs="+",
-            default=["wi", "wo"],
-            type=str,
-            help="parameter names of expert changing weights",
-        )
-        parser.add_argument(
             "--d_model", default=768, type=int, help="Dimension of model hidden states"
         )
         parser.add_argument("--scheduling_policy", default="deepspeed", type=str)
