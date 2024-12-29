@@ -15,7 +15,7 @@ class FlexibleDataset(Dataset):
         self.dataset_option = dataset_name
         self.num_samples = num_samples
         self.return_decoded = return_decoded
-        self.is_switch = "switch" in model_name
+        self.is_switch = (model_name and "switch" in model_name)
         torch.manual_seed(random_seed)
 
         if self.dataset_option == "bookcorpus":
