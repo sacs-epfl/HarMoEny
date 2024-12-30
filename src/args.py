@@ -44,10 +44,10 @@ class Args:
             help="class name of model MoE Layers",
         )
         parser.add_argument(
-            "--name_router",
-            default="router",
+            "--router_tensor_path",
+            default="router.classifier",
             type=str,
-            help="parameter name of router on MoE",
+            help="path from MoE layer to router's tensor",
         )
         parser.add_argument(
             "--name_experts",
@@ -74,11 +74,13 @@ class Args:
         parser.add_argument("--path", default="outputs/harmony", type=str)
         parser.add_argument("--expert_placement", default=None, type=str)
         parser.add_argument("--enable_router_skew", default=False, type=str2bool)
+        parser.add_argument("--enable_router_random", default=False, type=str2bool)
+        parser.add_argument("--enable_router_uniform", default=False, type=str2bool)
         parser.add_argument(
             "--router_skew", default=0.0, type=float, help="Value between 0 and 1"
         )
         parser.add_argument(
-            "--router_num_experts_skew",
+            "--router_num_experts_skewed",
             default=1,
             type=int,
             help="Number of experts that receive the skewed proportion",

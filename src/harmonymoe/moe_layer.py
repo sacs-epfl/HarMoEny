@@ -1,5 +1,6 @@
 from .scheduler import Scheduler
 from .expert_manager import ExpertManager
+from .router import RouterConfig, Router
 
 import torch.nn as nn
 import torch.nn.functional as F
@@ -12,6 +13,8 @@ import csv
 
 @dataclass
 class MoEConfig:
+    experts : list[any] = None
+    router_weights: any = None
     layer_idx: int = None
     scheduling_policy: str = "adnexus"
     cache_policy: str = "RAND"
@@ -23,20 +26,36 @@ class MoEConfig:
     fetching_strategy: str = "async-cpu"
     model_name: str = None
     num_experts: int = 8
+    enable_skew: bool = False
+    enable_random: bool = False
+    enable_uniform: bool = False
+    skew: int = 0.05
+    num_experts_skewed: int = 1
 
 
 class MoELayer(nn.Module):
-    def __init__(self, router, experts, config=MoEConfig):
-
+    #def __init__(self, router, experts, config=MoEConfig):
+    def __init__(self, config=MoEConfig):
         super(MoELayer, self).__init__()
 
-        self.router = router
-        self.experts = experts  # stays on CPU
+        # self.router = router
+        # self.experts = experts  # stays on CPU
+
+        print(f"Layer {config.layer_idx} creating router")
+        self.router = Router(RouterConfig(
+            d_model=config.d_model,
+            num_experts=config.num_experts,
+            weights=config.router_weights,
+            enable_skew=config.enable_skew,
+            enable_random=config.enable_random,
+            enable_uniform=config.enable_uniform,
+            skew=config.skew,
+            num_experts_skewed=config.num_experts_skewed,
+        ))
 
         self.config = config
         self.layer_idx = config.layer_idx
-
-        self.num_experts = len(experts)
+        self.num_experts = config.num_experts
         self.num_gpus = config.world_size
         self.d_model = config.d_model
         self.is_switch = "switch" in config.model_name
@@ -81,7 +100,7 @@ class MoELayer(nn.Module):
         )
 
         self.expert_manager = ExpertManager(
-            self.experts,
+            self.config.experts,
             self.config.expert_cache_size,
             cache=self.scheduler.get_cache(),
             fetching_strategy=self.config.fetching_strategy,
@@ -136,6 +155,9 @@ class MoELayer(nn.Module):
     def forward(self, hidden_states):
         self.start_pass.record()
 
+        original_shape = hidden_states.shape
+        hidden_states = hidden_states.view(-1, self.config.d_model)
+
         # if self.is_switch:
         router_mask, router_probs, router_logits = self.router(hidden_states)
         # router_mask has dim (batch_size, seq_len, num_experts)
@@ -158,8 +180,12 @@ class MoELayer(nn.Module):
 
         #     router_mask = torch.nn.functional.one_hot(selected_experts, num_classes=self.num_experts).permute(2, 1, 0)
 
+        # expert_indices = [
+        #     router_mask[:, :, j].nonzero(as_tuple=True) for j in range(self.num_experts)
+        # ]
+
         expert_indices = [
-            router_mask[:, :, j].nonzero(as_tuple=True) for j in range(self.num_experts)
+            router_mask[:, j].nonzero(as_tuple=True) for j in range(self.num_experts)
         ]
 
         num_toks_per_expert = [
@@ -244,6 +270,7 @@ class MoELayer(nn.Module):
         )
 
         hidden_states = router_probs * hidden_states
+        hidden_states = hidden_states.view(original_shape)
         # if not self.is_switch:
         #     hidden_states = hidden_states.view(batch_size, sequence_length, hidden_dim)
         return hidden_states, (router_logits, expert_index)

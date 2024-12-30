@@ -1,40 +1,56 @@
 import torch.nn as nn
 import torch
 from copy import deepcopy 
+import dataclasses
 
 from .moe_layer import MoELayer
 from transformers.models.switch_transformers.modeling_switch_transformers import SwitchTransformersTop1Router
 from transformers.models.switch_transformers.configuration_switch_transformers import SwitchTransformersConfig
 
-def replace_moe_layer(model, moe_parent_type, moe_type, router_name, shared_experts, config, override_router=None):
-    _replace_moe_layer(model, moe_parent_type, moe_type, [0], router_name, shared_experts, config, override_router=override_router)
+def get_tensor_by_path(module, path):
+    parts = path.split(".")
+    current = module
+    for part in parts:
+        current = getattr(current, part)
+    return current
 
-def _replace_moe_layer(model, moe_parent_type, moe_type, layer_idx, router_name, shared_experts, config, override_router=None):
+def replace_moe_layer(model, moe_parent_type, moe_type, router_tensor_path, shared_experts, config):
+    _replace_moe_layer(model, moe_parent_type, moe_type, [0], router_tensor_path, shared_experts, config)
+
+def _replace_moe_layer(model, moe_parent_type, moe_type, layer_idx, router_tensor_path, shared_experts, config):
     if type(model).__name__ == moe_parent_type:
         for child_name, child in model.named_children():
             if type(child).__name__ == moe_type:
-                if override_router == None:
-                    local_router = getattr(child, router_name)
-                    router = local_router
+                # if override_router == None:
+                #     local_router = getattr(child, router_name)
+                #     router = local_router
 
-                    if moe_type == "MixtralSparseMoeBlock":
-                        router_config = SwitchTransformersConfig(
-                            num_experts=config.num_experts,
-                            hidden_size=config.d_model,
-                        )
-                        router = SwitchTransformersTop1Router(router_config)
-                else:
-                    router = override_router()
+                #     if moe_type == "MixtralSparseMoeBlock":
+                #         router_config = SwitchTransformersConfig(
+                #             num_experts=config.num_experts,
+                #             hidden_size=config.d_model,
+                #         )
+                #         router = SwitchTransformersTop1Router(router_config)
+                # else:
+                #     router = override_router()
 
-                config.layer_idx = layer_idx[0]
+                local_config = dataclasses.replace(config)
+                local_config.layer_idx = layer_idx[0]
+                local_config.experts = shared_experts[local_config.layer_idx]
+                local_config.router_weights = get_tensor_by_path(child, router_tensor_path).weight
+                new_moe_layer = MoELayer(local_config)
+
+
+                #new_moe_layer = MoELayer(router, shared_experts[config.layer_idx], config)
+
+
                 layer_idx[0] += 1
-                new_moe_layer = MoELayer(router, shared_experts[config.layer_idx], config)
 
-                if override_router == None:
-                    if moe_type == "MixtralSparseMoeBlock":
-                        with torch.no_grad():
-                            new_moe_layer.router.classifier.weight.copy_(local_router.weight)
-                        print("Moved data for new router")
+                # if override_router == None:
+                #     if moe_type == "MixtralSparseMoeBlock":
+                #         with torch.no_grad():
+                #             new_moe_layer.router.classifier.weight.copy_(local_router.weight)
+                #         print("Moved data for new router")
 
                 setattr(model, child_name, new_moe_layer)
     else:
@@ -44,10 +60,9 @@ def _replace_moe_layer(model, moe_parent_type, moe_type, layer_idx, router_name,
                 moe_parent_type,
                 moe_type,
                 layer_idx,
-                router_name,
+                router_tensor_path,
                 shared_experts,
-                config,
-                override_router=override_router,
+                config
             )
 
 def get_moe_layers(model):
