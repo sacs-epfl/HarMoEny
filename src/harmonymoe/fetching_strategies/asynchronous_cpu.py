@@ -12,11 +12,6 @@ class AsynchronousCPU:
             torch.cuda.Event(enable_timing=False) for _ in range(config.num_experts)
         ]
 
-    #     self.work_order = self.create_work_order(config.num_experts, config.cache[self.config.rank][:])
-    
-    # def create_work_order(self, num_experts, loaded_experts_idx):
-
-
     def load_expert_into_slot(self, expert_idx, slot_idx):
         with nvtx.annotate(
             f"Loading expert {expert_idx} into slot {slot_idx}", color="green"
@@ -60,17 +55,6 @@ class AsynchronousCPU:
 
             return loaded[:2] + not_loaded + loaded[2:], not_loaded, loaded_slots[:2] + not_loaded_slots + loaded_slots[2:]
     
-    def old_generate_work_order(self, expert_mask):
-        expert_order = self.config.cache[self.config.rank][:]
-
-        # Setup
-        for expert_idx in range(self.config.num_experts):
-            if expert_mask[expert_idx].shape[0] != 0 and expert_idx not in expert_order:
-                expert_order.append(expert_idx)
-        
-        return expert_order
-        
-
     def execute_job(self, tokens, expert_mask, schedule=None):
         expert_order, need_loading, slot_idxs = self.generate_work_order(expert_mask)
 
@@ -114,20 +98,5 @@ class AsynchronousCPU:
                     self.config.cache[self.config.rank][slot_idx],
                     slot_idx
                 )
-
-        #     # Check if anything else needs loading
-        #     if idx + self.config.cache_size < len(expert_order):
-        #         stale_slots.append(slot_idx)
-        #         self.load_stream.wait_event(
-        #             self.expert_finished_executing_events[expert_idx]
-        #         )
-        #         self.load_expert_into_slot(
-        #             expert_order[idx + self.config.cache_size], slot_idx
-        #         )
-
-        # for stale_slot in stale_slots:
-        #     self.load_expert_into_slot(
-        #         self.config.cache[self.config.rank][stale_slot], stale_slot
-        #     )
 
         return tokens
