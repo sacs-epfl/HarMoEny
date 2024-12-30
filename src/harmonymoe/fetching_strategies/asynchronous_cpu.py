@@ -12,6 +12,11 @@ class AsynchronousCPU:
             torch.cuda.Event(enable_timing=False) for _ in range(config.num_experts)
         ]
 
+    #     self.work_order = self.create_work_order(config.num_experts, config.cache[self.config.rank][:])
+    
+    # def create_work_order(self, num_experts, loaded_experts_idx):
+
+
     def load_expert_into_slot(self, expert_idx, slot_idx):
         with nvtx.annotate(
             f"Loading expert {expert_idx} into slot {slot_idx}", color="green"
@@ -27,21 +32,53 @@ class AsynchronousCPU:
                         stream=self.load_stream
                     )
 
-    # TODO instead of calling .cache figure out what is loaded already
-    def execute_job(self, tokens, expert_mask, schedule=None):
+    def generate_work_order(self, expert_mask):
+        loaded = []
+        not_loaded = []
+        slots = []
+
+        # First collect all experts that need to execute
+        # Break them down between those loaded and not loaded
+        for i in range(self.config.num_experts):
+            if expert_mask[i].shape[0] != 0:
+                if i >= self.config.first_slot_expert_idx and i <= self.config.last_slot_expert_idx:
+                    # expert_idx, slot_idx, num_toks
+                    loaded.append((i, i - self.config.first_slot_expert_idx, expert_mask[i].shape[0]))
+                else:
+                    not_loaded.append(i)
+
+        loaded.sort(reverse=True, key=lambda x: x[2])
+        loaded_slots = list(map(lambda x: x[1], loaded))
+        loaded = list(map(lambda x: x[0], loaded))
+
+        if len(loaded) == 0:
+            return not_loaded, not_loaded, [0] * len(not_loaded)
+        elif len(loaded) == 1:
+            return loaded + not_loaded, not_loaded, [loaded_slots[0]] * (1 + len(not_loaded))
+        else:
+            not_loaded_slots = [loaded_slots[i % 2] for i in range(len(not_loaded))]
+
+            return loaded[:2] + not_loaded + loaded[2:], not_loaded, loaded_slots[:2] + not_loaded_slots + loaded_slots[2:]
+    
+    def old_generate_work_order(self, expert_mask):
         expert_order = self.config.cache[self.config.rank][:]
 
         # Setup
         for expert_idx in range(self.config.num_experts):
             if expert_mask[expert_idx].shape[0] != 0 and expert_idx not in expert_order:
                 expert_order.append(expert_idx)
+        
+        return expert_order
+        
 
-        # Rare instance will the cached expert have no tokens to process which will be just a no-op
+    def execute_job(self, tokens, expert_mask, schedule=None):
+        expert_order, need_loading, slot_idxs = self.generate_work_order(expert_mask)
 
         # Begin execution
         stale_slots = []
         for idx, expert_idx in enumerate(expert_order):
-            slot_idx = idx % self.config.cache_size
+            #slot_idx = idx % self.config.cache_size
+            slot_idx = slot_idxs[idx]
 
             if expert_idx != self.config.cache[self.config.rank][slot_idx]:
                 self.comp_stream.wait_event(
@@ -61,19 +98,36 @@ class AsynchronousCPU:
                 stream=self.comp_stream
             )
 
-            # Check if anything else needs loading
-            if idx + self.config.cache_size < len(expert_order):
-                stale_slots.append(slot_idx)
+            if len(need_loading) != 0: # Will need to load
                 self.load_stream.wait_event(
                     self.expert_finished_executing_events[expert_idx]
                 )
                 self.load_expert_into_slot(
-                    expert_order[idx + self.config.cache_size], slot_idx
+                    need_loading.pop(0), 
+                    slot_idx
+                )
+            elif expert_idx != self.config.cache[self.config.rank][slot_idx]: # Nothing else to load, do I need to bring in the original?
+                self.load_stream.wait_event(
+                    self.expert_finished_executing_events[expert_idx]
+                )
+                self.load_expert_into_slot(
+                    self.config.cache[self.config.rank][slot_idx],
+                    slot_idx
                 )
 
-        for stale_slot in stale_slots:
-            self.load_expert_into_slot(
-                self.config.cache[self.config.rank][stale_slot], stale_slot
-            )
+        #     # Check if anything else needs loading
+        #     if idx + self.config.cache_size < len(expert_order):
+        #         stale_slots.append(slot_idx)
+        #         self.load_stream.wait_event(
+        #             self.expert_finished_executing_events[expert_idx]
+        #         )
+        #         self.load_expert_into_slot(
+        #             expert_order[idx + self.config.cache_size], slot_idx
+        #         )
+
+        # for stale_slot in stale_slots:
+        #     self.load_expert_into_slot(
+        #         self.config.cache[self.config.rank][stale_slot], stale_slot
+        #     )
 
         return tokens

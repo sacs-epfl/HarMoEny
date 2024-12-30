@@ -1,6 +1,6 @@
 datetime=$(date +"%Y-%m-%d_%H-%M")
 
-num_samples=384
+num_samples=1280
 seq_len=512
 batch_size=16
 world_size=8
