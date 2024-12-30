@@ -5,8 +5,18 @@ import json
 
 import torch.distributed as dist
 
-class Scheduler():
-    def __init__(self, scheduling_policy="deepspeed", num_experts=8, eq_tokens=150, num_gpus=1, d_model=768, expert_placement=None, layer_idx=0):
+
+class Scheduler:
+    def __init__(
+        self,
+        scheduling_policy="deepspeed",
+        num_experts=8,
+        eq_tokens=150,
+        num_gpus=1,
+        d_model=768,
+        expert_placement=None,
+        layer_idx=0,
+    ):
         self.num_experts = num_experts
         self.eq_tokens = eq_tokens
         self.d_model = d_model
@@ -17,7 +27,7 @@ class Scheduler():
         self.is_fixed_placement = False
         self.is_reference_placement = False
         self.expert_to_gpu = None
-        self.gpu_to_experts_list = None 
+        self.gpu_to_experts_list = None
 
         self.rank = dist.get_rank()
         if self.expert_to_gpu is not None:
@@ -50,32 +60,48 @@ class Scheduler():
                         self.expert_to_gpu = self.generate_naive_expert_gpu_tensor()
                     else:
                         self.gpu_to_experts_list = expert_placement[layer_idx]
-                        self.expert_to_gpu = self.convert_gpu_to_experts_to_expert_gpu(self.gpu_to_experts_list)
+                        self.expert_to_gpu = self.convert_gpu_to_experts_to_expert_gpu(
+                            self.gpu_to_experts_list
+                        )
             case _:
                 print("SCHEDULING POLICY NOT IMPLEMENTED")
                 exit(1)
 
         if self.expert_to_gpu is not None and self.gpu_to_experts_list is None:
-            self.gpu_to_experts_list = self.generate_expert_gpu_to_gpu_expert(self.expert_to_gpu)  
-    
+            self.gpu_to_experts_list = self.generate_expert_gpu_to_gpu_expert(
+                self.expert_to_gpu
+            )
+
     def get_cache(self):
         if self.gpu_to_experts_list is not None:
-            return list(map(lambda x: list(map(lambda y: y.item(), x)), self.gpu_to_experts_list))
+            return list(
+                map(
+                    lambda x: list(map(lambda y: y.item(), x)), self.gpu_to_experts_list
+                )
+            )
         else:
             return None
-    
+
     def get_fixed_assign(self):
         if self.is_fixed_placement:
-            return list(map(lambda x: list(map(lambda y: y.item(), x)), self.gpu_to_experts_list))
-        return None 
-        #return self.fixed_assign
-    
+            return list(
+                map(
+                    lambda x: list(map(lambda y: y.item(), x)), self.gpu_to_experts_list
+                )
+            )
+        return None
+        # return self.fixed_assign
+
     def get_reference_assign(self):
         if self.is_reference_placement:
-            return list(map(lambda x: list(map(lambda y: y.item(), x)), self.gpu_to_experts_list))
+            return list(
+                map(
+                    lambda x: list(map(lambda y: y.item(), x)), self.gpu_to_experts_list
+                )
+            )
         return None
-        #return self.reference_assign 
-    
+        # return self.reference_assign
+
     def __call__(self, meta):
         return self.scheduler(meta)
 
@@ -92,24 +118,28 @@ class Scheduler():
                 amount = schedule[self.rank][j][i]
                 if amount != 0:
                     start = amount_expert_filled[j]
-                    tokens[tokens_idx:tokens_idx+amount] = hidden_states[expert_indices[j]][start:start+amount]
+                    tokens[tokens_idx : tokens_idx + amount] = hidden_states[
+                        expert_indices[j]
+                    ][start : start + amount]
                     tokens_idx += amount
                     amount_expert_filled[j] += amount
             post = tokens_idx
-            send_splits.append(post-pre)
-        
+            send_splits.append(post - pre)
+
         return tokens, send_splits
 
     def generate_distribution_mask(self, schedule, expert_indices, num_toks_send):
-        indices = torch.empty((num_toks_send,), dtype=torch.long, device=schedule.device)
+        indices = torch.empty(
+            (num_toks_send,), dtype=torch.long, device=schedule.device
+        )
 
         local_schedule = schedule[self.rank]
 
-        send_splits = local_schedule.sum(dim=0) # Shape (num_gpus,)
-        tokens_gpu_offset = send_splits.cumsum(0) - send_splits # Shape (num_gpus,)
+        send_splits = local_schedule.sum(dim=0)  # Shape (num_gpus,)
+        tokens_gpu_offset = send_splits.cumsum(0) - send_splits  # Shape (num_gpus,)
 
         for j in range(self.num_experts):
-            amounts = local_schedule[j] # Shape (num_gpus,)
+            amounts = local_schedule[j]  # Shape (num_gpus,)
             non_zero_mask = amounts > 0
 
             if non_zero_mask.any():
@@ -117,13 +147,22 @@ class Scheduler():
                 end = start + amounts[non_zero_mask]
                 tokens_gpu_offset[non_zero_mask] = end
 
-                indices_index = torch.cat([torch.arange(s, e, device=schedule.device) for s, e in zip(start, end)])
+                indices_index = torch.cat(
+                    [
+                        torch.arange(s, e, device=schedule.device)
+                        for s, e in zip(start, end)
+                    ]
+                )
 
-                indices[indices_index] = expert_indices[j] # Assuming that all tokens are assigned. Can also do expert_amounts[j] instead perhaps if it isn't more expensive
+                indices[indices_index] = expert_indices[
+                    j
+                ]  # Assuming that all tokens are assigned. Can also do expert_amounts[j] instead perhaps if it isn't more expensive
 
         return indices, send_splits.tolist()
 
-    def gather_tokens(self, schedule, tokens: torch.Tensor, hidden_states, expert_indices):
+    def gather_tokens(
+        self, schedule, tokens: torch.Tensor, hidden_states, expert_indices
+    ):
         tokens_idx = 0
         experts_idx = [0 for _ in range(self.num_experts)]
         rank = dist.get_rank()
@@ -133,25 +172,35 @@ class Scheduler():
                 amount = schedule[rank][j][i]
                 if amount != 0:
                     start = experts_idx[j]
-                    hidden_states[expert_indices[j]][start:start+amount] = tokens[tokens_idx:tokens_idx+amount]
+                    hidden_states[expert_indices[j]][start : start + amount] = tokens[
+                        tokens_idx : tokens_idx + amount
+                    ]
                     tokens_idx += amount
                     experts_idx[j] += amount
 
-        return hidden_states 
+        return hidden_states
 
     def allocate_recv_tensors(self, schedule):
-        recv_splits = torch.sum(schedule[:, :, self.rank], dim=(1)) # Shape (num_gpus,)
+        recv_splits = torch.sum(schedule[:, :, self.rank], dim=(1))  # Shape (num_gpus,)
 
-        return torch.empty((recv_splits.sum(), self.d_model), device="cuda"), recv_splits.tolist()
+        return (
+            torch.empty((recv_splits.sum(), self.d_model), device="cuda"),
+            recv_splits.tolist(),
+        )
 
     def generate_expert_mask(self, schedule: torch.Tensor, total_tokens):
         amounts = schedule[:, :, self.rank]  # Shape (num_gpus, num_experts)
 
         if total_tokens == 0:
-            return [torch.tensor([], dtype=torch.long, device=amounts.device) for _ in range(self.num_experts)]
+            return [
+                torch.tensor([], dtype=torch.long, device=amounts.device)
+                for _ in range(self.num_experts)
+            ]
 
         amounts_flat = amounts.view(-1)  # Shape (num_gpus * num_experts)
-        expert_indices = torch.arange(self.num_experts, device=amounts.device).repeat(self.num_gpus)
+        expert_indices = torch.arange(self.num_experts, device=amounts.device).repeat(
+            self.num_gpus
+        )
         token_expert = torch.repeat_interleave(expert_indices, amounts_flat)
         token_indices = torch.arange(total_tokens, device=amounts.device)
 
@@ -163,35 +212,40 @@ class Scheduler():
         num_tokens_per_expert = amounts.sum(dim=0)  # Shape (num_experts,)
 
         # Split the sorted token indices according to the number of tokens per expert
-        expert_indices_list = torch.split(sorted_token_indices, num_tokens_per_expert.tolist())
+        expert_indices_list = torch.split(
+            sorted_token_indices, num_tokens_per_expert.tolist()
+        )
 
         return expert_indices_list
 
     def generate_naive_expert_gpu_tensor(self):
         num_experts_per_gpu = self.num_experts // self.num_gpus
 
-        placement = torch.arange(self.num_experts, dtype=torch.long) // num_experts_per_gpu
+        placement = (
+            torch.arange(self.num_experts, dtype=torch.long) // num_experts_per_gpu
+        )
 
         return placement
-    
+
     def generate_expert_gpu_to_gpu_expert(self, expert_gpu):
         return [
-            (expert_gpu == i).nonzero(as_tuple=False).flatten() for i in range(self.num_gpus)
+            (expert_gpu == i).nonzero(as_tuple=False).flatten()
+            for i in range(self.num_gpus)
         ]
-    
+
     def convert_gpu_to_experts_to_expert_gpu(self, gpu_experts):
         expert_gpu = torch.zeros(self.num_experts, dtype=torch.long)
 
         for i in range(self.num_gpus):
             for e in gpu_experts[i]:
-                expert_gpu[e] = i 
-        
+                expert_gpu[e] = i
+
         return expert_gpu
 
     # def schedule_drop(self, meta):
     #     schedule = [[[0 for _ in range(self.num_gpus)] for _ in range(self.num_experts)] for _ in range(self.num_gpus)]
 
-    #     avg = int(sum(map(lambda t: sum(t).item(), meta)) / self.num_gpus) 
+    #     avg = int(sum(map(lambda t: sum(t).item(), meta)) / self.num_gpus)
     #     gpu_amt = [0 for _ in range(self.num_gpus)]
     #     for i in range(self.num_gpus): # source
     #         for j in range(self.num_experts): # expert
@@ -213,7 +267,7 @@ class Scheduler():
 
         avg = meta.sum().item() // self.num_gpus
 
-        gpu_amt = torch.sum(schedule, dim=(0,1))
+        gpu_amt = torch.sum(schedule, dim=(0, 1))
 
         for i in range(self.num_gpus):
             while gpu_amt[i] > avg:
@@ -225,7 +279,7 @@ class Scheduler():
 
                 max_val, max_idx = torch.max(schedule_for_gpu.view(-1), dim=0)
                 if max_val == 0:
-                    break # This shouldn't happen given while loop
+                    break  # This shouldn't happen given while loop
 
                 idx_source = max_idx // self.num_experts
                 idx_expert = max_idx % self.num_experts
@@ -234,14 +288,19 @@ class Scheduler():
 
                 schedule[idx_source, idx_expert, i] -= remove_amt
                 gpu_amt[i] -= remove_amt
-        
+
         return schedule
 
-    
     def schedule_fixed(self, meta):
-        schedule = torch.zeros((self.num_gpus, self.num_experts, self.num_gpus), dtype=torch.int, device="cuda")
+        schedule = torch.zeros(
+            (self.num_gpus, self.num_experts, self.num_gpus),
+            dtype=torch.int,
+            device="cuda",
+        )
 
-        schedule[:, torch.arange(self.num_experts, device="cuda"), self.expert_to_gpu] = meta
+        schedule[
+            :, torch.arange(self.num_experts, device="cuda"), self.expert_to_gpu
+        ] = meta
 
         return schedule
 
@@ -253,19 +312,21 @@ class Scheduler():
 
         avg = meta.sum().item() // self.num_gpus
 
-        gpu_amt = torch.sum(schedule, dim=(0, 1)) # Shape (num_gpus,)
+        gpu_amt = torch.sum(schedule, dim=(0, 1))  # Shape (num_gpus,)
 
         while (gpu_amt > avg).any():
             # Identify most overload GPU
-            overloaded_idx = torch.argmax(gpu_amt) # Long
+            overloaded_idx = torch.argmax(gpu_amt)  # Long
 
             # Find GPU sending most tokens to overloaded GPU
-            send_tokens = torch.sum(schedule[:, :, overloaded_idx], dim=1) # Shape (num_gpus,)
+            send_tokens = torch.sum(
+                schedule[:, :, overloaded_idx], dim=1
+            )  # Shape (num_gpus,)
             sender_idx = torch.argmax(send_tokens)
 
             # Find the expert sending the most tokens from the sender
             expert_tokens = schedule[sender_idx, :, overloaded_idx]
-            expert_idx = torch.argmax(expert_tokens) # Long
+            expert_idx = torch.argmax(expert_tokens)  # Long
 
             tokens_to_move = expert_tokens[expert_idx]
 
@@ -274,25 +335,28 @@ class Scheduler():
             if tokens_to_move < self.eq_tokens:
                 # if self.rank == 0:
                 #     print("MADE IT HERE")
-                break # Not enough tokens to move
-            
+                break  # Not enough tokens to move
+
             # Identify least loaded GPU
-            least_idx = torch.argmin(gpu_amt) # Long
+            least_idx = torch.argmin(gpu_amt)  # Long
 
             if least_idx == overloaded_idx or gpu_amt[least_idx] + self.eq_tokens > avg:
                 break
 
             tokens_send = torch.min(tokens_to_move, avg - gpu_amt[least_idx])
-          
+
             schedule[sender_idx, expert_idx, overloaded_idx] -= tokens_send
             schedule[sender_idx, expert_idx, least_idx] += tokens_send
             gpu_amt[overloaded_idx] -= tokens_send
             gpu_amt[least_idx] += tokens_send
-        
+
         return schedule
 
     def schedule_even_split(self, meta):
-        schedule = [[[0 for _ in range(self.num_gpus)] for _ in range(self.num_experts)] for _ in range(self.num_gpus)]
+        schedule = [
+            [[0 for _ in range(self.num_gpus)] for _ in range(self.num_experts)]
+            for _ in range(self.num_gpus)
+        ]
 
         for i in range(self.num_gpus):
             for j in range(self.num_experts):
@@ -303,6 +367,6 @@ class Scheduler():
                     if leftover > 0:
                         leftover -= 1
                         amt += 1
-                    schedule[i][j][k] = amt 
-        
+                    schedule[i][j][k] = amt
+
         return torch.tensor(schedule, dtype=torch.long, device="cuda")

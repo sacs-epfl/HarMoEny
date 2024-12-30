@@ -196,14 +196,6 @@ if __name__ == "__main__":
         num_experts_skewed=args.router_num_experts_skewed,
     )
 
-    # router = None
-    # if args.enable_router_skew:
-    #     router = lambda: Router(
-    #         args.num_experts,
-    #         skew=args.router_skew,
-    #         num_expert_skew=args.router_num_experts_skew,
-    #         enable_random=args.random_router_skew,
-    #     )
     replace_moe_layer(
         model,
         args.type_moe_parent,
@@ -211,10 +203,7 @@ if __name__ == "__main__":
         args.router_tensor_path,
         experts,
         config,
-      #  override_router=router,
     )
-
-    #exit(0)
 
     logger.info("Finished loading model")
 

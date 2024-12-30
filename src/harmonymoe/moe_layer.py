@@ -13,7 +13,7 @@ import csv
 
 @dataclass
 class MoEConfig:
-    experts : list[any] = None
+    experts: list[any] = None
     router_weights: any = None
     layer_idx: int = None
     scheduling_policy: str = "adnexus"
@@ -34,31 +34,27 @@ class MoEConfig:
 
 
 class MoELayer(nn.Module):
-    #def __init__(self, router, experts, config=MoEConfig):
     def __init__(self, config=MoEConfig):
         super(MoELayer, self).__init__()
 
-        # self.router = router
-        # self.experts = experts  # stays on CPU
-
-        print(f"Layer {config.layer_idx} creating router")
-        self.router = Router(RouterConfig(
-            d_model=config.d_model,
-            num_experts=config.num_experts,
-            weights=config.router_weights,
-            enable_skew=config.enable_skew,
-            enable_random=config.enable_random,
-            enable_uniform=config.enable_uniform,
-            skew=config.skew,
-            num_experts_skewed=config.num_experts_skewed,
-        ))
+        self.router = Router(
+            RouterConfig(
+                d_model=config.d_model,
+                num_experts=config.num_experts,
+                weights=config.router_weights,
+                enable_skew=config.enable_skew,
+                enable_random=config.enable_random,
+                enable_uniform=config.enable_uniform,
+                skew=config.skew,
+                num_experts_skewed=config.num_experts_skewed,
+            )
+        )
 
         self.config = config
         self.layer_idx = config.layer_idx
         self.num_experts = config.num_experts
         self.num_gpus = config.world_size
         self.d_model = config.d_model
-        self.is_switch = "switch" in config.model_name
 
         # For statistics
         self.tot_num_toks_send = []
@@ -109,7 +105,6 @@ class MoELayer(nn.Module):
 
     def get_statistics(self):
         stats = []
-        # expert_manager_stats = self.expert_manager.get_statistics()
         for i in range(len(self.tot_num_toks_send)):
             dic = {
                 "latency (ms)": self.latencies[i],
@@ -143,11 +138,6 @@ class MoELayer(nn.Module):
                 "expert distribution": self.expert_freqs[i],
             }
 
-            # for key in expert_manager_stats.keys():
-            #     _len = len(expert_manager_stats[key])
-            #     if _len != 0:
-            #         dic[key] = expert_manager_stats[key][i] if i < _len else -1
-
             stats.append(dic)
         return stats
 
@@ -158,7 +148,6 @@ class MoELayer(nn.Module):
         original_shape = hidden_states.shape
         hidden_states = hidden_states.view(-1, self.config.d_model)
 
-        # if self.is_switch:
         router_mask, router_probs, router_logits = self.router(hidden_states)
         # router_mask has dim (batch_size, seq_len, num_experts)
         # Entry will be a 1 on which expert to work on for the specific token
@@ -166,23 +155,6 @@ class MoELayer(nn.Module):
 
         expert_index = torch.argmax(router_mask, dim=-1)
         router_mask = router_mask.bool()
-        # else:
-        #     batch_size, sequence_length, hidden_dim = hidden_states.shape
-        #     hidden_states = hidden_states.view(-1, hidden_dim)
-        #     router_logits = self.router(hidden_states)
-
-        #     router_probs = F.softmax(router_logits, dim=1, dtype=torch.float)
-        #     router_probs, selected_experts = torch.topk(router_probs, 1, dim=-1) # top-k = 2
-        #     router_probs /= router_probs.sum(dim=-1, keepdim=True)
-
-        #     # we cast back to the input dtype
-        #     router_probs = router_probs.to(hidden_states.dtype)
-
-        #     router_mask = torch.nn.functional.one_hot(selected_experts, num_classes=self.num_experts).permute(2, 1, 0)
-
-        # expert_indices = [
-        #     router_mask[:, :, j].nonzero(as_tuple=True) for j in range(self.num_experts)
-        # ]
 
         expert_indices = [
             router_mask[:, j].nonzero(as_tuple=True) for j in range(self.num_experts)
@@ -271,6 +243,5 @@ class MoELayer(nn.Module):
 
         hidden_states = router_probs * hidden_states
         hidden_states = hidden_states.view(original_shape)
-        # if not self.is_switch:
-        #     hidden_states = hidden_states.view(batch_size, sequence_length, hidden_dim)
+
         return hidden_states, (router_logits, expert_index)

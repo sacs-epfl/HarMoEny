@@ -1,11 +1,16 @@
 import torch.nn as nn
 import torch
-from copy import deepcopy 
+from copy import deepcopy
 import dataclasses
 
 from .moe_layer import MoELayer
-from transformers.models.switch_transformers.modeling_switch_transformers import SwitchTransformersTop1Router
-from transformers.models.switch_transformers.configuration_switch_transformers import SwitchTransformersConfig
+from transformers.models.switch_transformers.modeling_switch_transformers import (
+    SwitchTransformersTop1Router,
+)
+from transformers.models.switch_transformers.configuration_switch_transformers import (
+    SwitchTransformersConfig,
+)
+
 
 def get_tensor_by_path(module, path):
     parts = path.split(".")
@@ -14,43 +19,42 @@ def get_tensor_by_path(module, path):
         current = getattr(current, part)
     return current
 
-def replace_moe_layer(model, moe_parent_type, moe_type, router_tensor_path, shared_experts, config):
-    _replace_moe_layer(model, moe_parent_type, moe_type, [0], router_tensor_path, shared_experts, config)
 
-def _replace_moe_layer(model, moe_parent_type, moe_type, layer_idx, router_tensor_path, shared_experts, config):
+def replace_moe_layer(
+    model, moe_parent_type, moe_type, router_tensor_path, shared_experts, config
+):
+    _replace_moe_layer(
+        model,
+        moe_parent_type,
+        moe_type,
+        [0],
+        router_tensor_path,
+        shared_experts,
+        config,
+    )
+
+
+def _replace_moe_layer(
+    model,
+    moe_parent_type,
+    moe_type,
+    layer_idx,
+    router_tensor_path,
+    shared_experts,
+    config,
+):
     if type(model).__name__ == moe_parent_type:
         for child_name, child in model.named_children():
             if type(child).__name__ == moe_type:
-                # if override_router == None:
-                #     local_router = getattr(child, router_name)
-                #     router = local_router
-
-                #     if moe_type == "MixtralSparseMoeBlock":
-                #         router_config = SwitchTransformersConfig(
-                #             num_experts=config.num_experts,
-                #             hidden_size=config.d_model,
-                #         )
-                #         router = SwitchTransformersTop1Router(router_config)
-                # else:
-                #     router = override_router()
-
                 local_config = dataclasses.replace(config)
                 local_config.layer_idx = layer_idx[0]
                 local_config.experts = shared_experts[local_config.layer_idx]
-                local_config.router_weights = get_tensor_by_path(child, router_tensor_path).weight
+                local_config.router_weights = get_tensor_by_path(
+                    child, router_tensor_path
+                ).weight
                 new_moe_layer = MoELayer(local_config)
 
-
-                #new_moe_layer = MoELayer(router, shared_experts[config.layer_idx], config)
-
-
                 layer_idx[0] += 1
-
-                # if override_router == None:
-                #     if moe_type == "MixtralSparseMoeBlock":
-                #         with torch.no_grad():
-                #             new_moe_layer.router.classifier.weight.copy_(local_router.weight)
-                #         print("Moved data for new router")
 
                 setattr(model, child_name, new_moe_layer)
     else:
@@ -62,11 +66,13 @@ def _replace_moe_layer(model, moe_parent_type, moe_type, layer_idx, router_tenso
                 layer_idx,
                 router_tensor_path,
                 shared_experts,
-                config
+                config,
             )
+
 
 def get_moe_layers(model):
     return _get_moe_layers([], model)
+
 
 def _get_moe_layers(acc, model):
     for module in model.children():
@@ -77,22 +83,9 @@ def _get_moe_layers(acc, model):
     return acc
 
 
-# def get_moe_experts(model, moe_type, experts_name):
-#     return _get_moe_experts(nn.ModuleList(), model, moe_type, experts_name)
-
-# def _get_moe_experts(acc, model, moe_type, experts_name):
-#     if type(model).__name__ == moe_type:
-#         experts = getattr(model, experts_name)
-#         if isinstance(experts, nn.ModuleDict):
-#             experts = nn.ModuleList(experts.values())
-#         acc.append(deepcopy(experts))
-#     else:
-#         for module in model.children():
-#             acc = _get_moe_experts(acc, module, moe_type, experts_name)
-#     return acc
-
 def get_moe_experts(model, moe_type, experts_name):
     return _get_moe_experts([], model, moe_type, experts_name)
+
 
 def _get_moe_experts(acc, model, moe_type, experts_name):
     if type(model).__name__ == moe_type:
