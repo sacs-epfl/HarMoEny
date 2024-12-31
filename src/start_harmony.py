@@ -13,6 +13,7 @@ import signal
 from tqdm import tqdm
 from args import Args
 import logging
+from concurrent.futures import as_completed, ThreadPoolExecutor
 
 from torch.utils.data import DataLoader, DistributedSampler
 from transformers import AutoTokenizer, AutoModel
@@ -45,10 +46,9 @@ def setup(rank, timeout=timedelta(minutes=30)):
     )
 
 
-def run_inference_workload(rank, model, batch=args.batch_size):
+def run_inference_workload(rank, model):
     try:
         logger.info(f"Starting process {rank}")
-        args.batch_size = batch
 
         mp.current_process().name = f"Worker-{rank}"
         setup(rank)
@@ -83,7 +83,7 @@ def run_inference_workload(rank, model, batch=args.batch_size):
         loader = DataLoader(
             flexible_dataset,
             sampler=sampler,
-            batch_size=batch,
+            batch_size=args.batch_size,
         )
 
         path = f"{args.path}/{rank}"
@@ -159,11 +159,7 @@ def signal_handler(sig, frame):
     sys.exit(0)
 
 
-if __name__ == "__main__":
-    logging.info("Starting main process")
-
-    signal.signal(signal.SIGINT, signal_handler)
-
+def generate_model():
     model = AutoModel.from_pretrained(args.model_name)
 
     experts = get_moe_experts(model, args.type_moe, args.name_experts)
@@ -207,22 +203,43 @@ if __name__ == "__main__":
 
     logger.info("Finished loading model")
 
+    return model
+
+def launch_processes_and_wait(model):
+    processes = [None] * args.world_size
+
+    def start_process(i):
+        process = mp.Process(
+            target=run_inference_workload,
+            args=(i, model),
+        )
+        process.start()
+        return i, process
+    
+    mp.set_start_method("spawn", force=True)
+
+    with ThreadPoolExecutor(max_workers=args.world_size) as executor:
+        futures = [executor.submit(start_process, i) for i in range(args.world_size)]
+        for fut in as_completed(futures):
+            idx, process = fut.result()
+            processes[idx] = process
+    
+    for process in processes:
+        process.join()
+
+    logger.info("All processes complete")
+
+if __name__ == "__main__":
+    logging.info("Starting main process")
+
+    signal.signal(signal.SIGINT, signal_handler)
+
+    model = generate_model()
+
     stats = Stats(gpu=True, cpu=True, num_gpus=args.world_size)
     stats.start()
 
-    processes = []
-    mp.set_start_method("spawn", force=True)
-    for i in range(args.world_size):
-        p = mp.Process(
-            target=run_inference_workload,
-            args=(i, model),
-            kwargs=dict(batch=args.batch_size),
-        )
-        p.start()
-        processes.append(p)
-    for p in processes:
-        p.join()
-    logger.info("All processes complete")
+    launch_processes_and_wait(model)
 
     stats.stop()
     stats.save(path=args.path)
