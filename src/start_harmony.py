@@ -39,6 +39,7 @@ def setup(rank, timeout=timedelta(minutes=30)):
     os.environ["MASTER_ADDR"] = "localhost"
     os.environ["MASTER_PORT"] = args.port
 
+    torch.set_num_threads(mp.cpu_count() // args.world_size)
     torch.cuda.set_device(rank)
 
     dist.init_process_group(

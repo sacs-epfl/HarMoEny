@@ -22,7 +22,7 @@ class Router(nn.Module):
         self.config = config
 
         if self.config.skew > 1:
-            self.config.skew = 1 / self.config.skew
+            self.config.skew = self.config.skew / 100
 
         if config.enable_skew:
             self.forward = self.skew_forward
@@ -61,7 +61,7 @@ class Router(nn.Module):
         multinomial_probs = torch.full(
             (self.config.num_experts,), multinomial_prob, device=x.device
         )
-        multinomial_probs[: self.config.num_experts_skewed] = skewed_multinomial_prob
+        multinomial_probs[:self.config.num_experts_skewed] = skewed_multinomial_prob
 
         expert_indices = torch.multinomial(
             multinomial_probs, num_samples=x.shape[0], replacement=True

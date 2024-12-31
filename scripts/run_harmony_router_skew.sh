@@ -8,10 +8,11 @@ expert_cache_size=16
 num_experts=128
 expert_fetching_strategy="async-cpu"
 enable_skew=True
-skew=50
-num_experts_skewed=10
+skew=90
+num_experts_skewed=5
 enable_random=False
 enable_uniform=False
+eq_tokens=1024
 
 cd ..
 python3 src/start_harmony.py \
@@ -24,7 +25,7 @@ python3 src/start_harmony.py \
         --scheduling_policy "harmony" \
         --expert_cache_size $expert_cache_size \
         --world_size $world_size \
-        --eq_tokens 1024 \
+        --eq_tokens $eq_tokens \
         --expert_fetching_strategy $expert_fetching_strategy \
         --warmup_rounds 3 \
         --enable_router_skew $enable_skew \
