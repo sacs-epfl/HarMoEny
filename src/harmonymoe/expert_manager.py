@@ -38,6 +38,7 @@ class ExpertManager:
         self.cached_experts = [
             copy.deepcopy(self.experts[0]).cuda() for _ in range(self.cache_size)
         ]
+
         self.buffer_expert = (
             copy.deepcopy(self.experts[0]).cuda()
             if self.fetching_strategy == "gpu"
@@ -66,7 +67,8 @@ class ExpertManager:
         )
 
         if fetching_strategy == "async-cpu":
-            self.executor = fetching_strategies.AsynchronousCPU(config)
+            #self.executor = fetching_strategies.AsynchronousCPU(config)
+            self.executor = fetching_strategies.AsynchronousCPUAllStreams(config)
         elif fetching_strategy == "sync-cpu":
             self.executor = fetching_strategies.SynchronousCPU(config)
         elif fetching_strategy == "gpu":
