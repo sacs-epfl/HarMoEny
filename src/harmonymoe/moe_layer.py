@@ -206,6 +206,7 @@ class MoELayer(nn.Module):
         expert_mask = self.scheduler.generate_expert_mask(schedule, total_tokens)
         self.start_computation.record()
         self.expert_manager(tokens_recv, expert_mask, schedule=schedule)
+        torch.cuda.synchronize()
         self.end_computation.record()
 
         self.start_second_transfer.record()

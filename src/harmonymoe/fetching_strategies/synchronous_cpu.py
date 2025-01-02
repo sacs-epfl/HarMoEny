@@ -5,8 +5,9 @@ import nvtx
 class SynchronousCPU:
     def __init__(self, config):
         self.config = config
+        self.load_finished = torch.cuda.Event(enable_timing=False)
 
-    def load_expert_into_slot_no_async(self, expert_idx, slot_idx):
+    def load_expert_into_slot_synchronously(self, expert_idx, slot_idx):
         with nvtx.annotate(
             f"Loading expert {expert_idx} into slot {slot_idx}", color="green"
         ):
@@ -16,6 +17,8 @@ class SynchronousCPU:
                 for name, param in cached_expert.named_parameters():
                     cpu_param = pinned_state_dict[name]
                     param.copy_(cpu_param, non_blocking=False)
+                self.load_finished.record()
+                self.load_finished.synchronize()
 
     def execute_job(self, tokens, expert_mask, schedule=None):
         expert_order = self.config.cache[self.config.rank][:]
@@ -34,22 +37,27 @@ class SynchronousCPU:
         loaded = False
 
         for idx, expert_idx in enumerate(expert_order):
-            slot_idx = idx % self.config.cache_size
-
-            if self.config.cache[self.config.rank][slot_idx] != expert_idx:
+            if expert_idx not in self.config.cache[self.config.rank]:
                 loaded = True
                 slot_idx = 0
-                event = torch.cuda.Event(enable_timing=False)
-                self.load_expert_into_slot_no_async(expert_idx, slot_idx)
-                event.record()
-                event.synchronize()
+                self.load_expert_into_slot_synchronously(expert_idx, slot_idx)
+            else:
+                slot_idx = self.config.cache[self.config.rank].index(expert_idx)
+
+            # slot_idx = idx % self.config.cache_size
+
+            # if self.config.cache[self.config.rank][slot_idx] != expert_idx:
+            #     loaded = True
+            #     slot_idx = 0
+            #     self.load_expert_into_slot_synchronously(expert_idx, slot_idx)
+                
 
             tokens[expert_mask[expert_idx]] = self.config.cached_experts[slot_idx](
                 tokens[expert_mask[expert_idx]]
             )
 
         if loaded:
-            self.load_expert_into_slot_no_async(
+            self.load_expert_into_slot_synchronously(
                 self.config.cache[self.config.rank][0], 0
             )
 

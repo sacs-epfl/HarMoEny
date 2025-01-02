@@ -1,76 +1,88 @@
-dataset=constant
-num_samples=200000
+datetime=$(date +"%Y-%m-%d_%H-%M")
+
+num_samples=3840
+# ONLINE (latency)
+# seq_len=512
+# batch_size=16
+# OFFLINE (throughput)
+seq_len=1024
+batch_size=48
+world_size=8
+expert_cache_size=16
 num_experts=128
-num_gpus=8
-seq_len=120
+expert_fetching_strategy="async-cpu"
+enable_skew=True
+skew=90
+num_experts_skewed=5
+enable_random=False
+enable_uniform=False
+eq_tokens=2048
+warmup_len=3
 
 cd ..
 # python3 src/start_harmony.py \
-#         --dataset $dataset \
+#         --dataset "bookcorpus" \
 #         --num_samples $num_samples \
+#         --batch_size $batch_size \
 #         --seq_len $seq_len \
 #         --model_name "google/switch-base-$num_experts" \
+#         --num_experts $num_experts \
 #         --scheduling_policy "deepspeed" \
-#         --expert_cache_size 16 \
-#         --world_size $num_gpus \
-#         --batch_size 2000 \
-#         --enable_router_skew True \
-#         --router_skew 0.5 \
-#         --path "outputs/timetime/harmony_no_rebalancing_router_skew_50"
+#         --expert_cache_size $expert_cache_size \
+#         --world_size $world_size \
+#         --warmup_rounds $warmup_len \
+#         --enable_router_skew $enable_skew \
+#         --enable_router_random $enable_random \
+#         --enable_router_uniform $enable_uniform \
+#         --router_skew $skew \
+#         --router_num_experts_skewed $num_experts_skewed \
+#         --pa "outputs/timetime/$datetime/harmony-no-sched"
+
+python3 src/start_harmony.py \
+        --dataset "bookcorpus" \
+        --num_samples $num_samples \
+        --batch_size $batch_size \
+        --seq_len $seq_len \
+        --model_name "google/switch-base-$num_experts" \
+        --num_experts $num_experts \
+        --scheduling_policy "harmony" \
+        --expert_cache_size $expert_cache_size \
+        --world_size $world_size \
+        --eq_tokens $eq_tokens \
+        --expert_fetching_strategy "async-cpu" \
+        --warmup_rounds $warmup_len \
+        --enable_router_skew $enable_skew \
+        --enable_router_random $enable_random \
+        --enable_router_uniform $enable_uniform \
+        --router_skew $skew \
+        --router_num_experts_skewed $num_experts_skewed \
+        --pa "outputs/timetime/$datetime/harmony-async"
 
 # python3 src/start_harmony.py \
-#         --dataset $dataset \
+#         --dataset "bookcorpus" \
 #         --num_samples $num_samples \
+#         --batch_size $batch_size \
 #         --seq_len $seq_len \
 #         --model_name "google/switch-base-$num_experts" \
 #         --num_experts $num_experts \
 #         --scheduling_policy "harmony" \
-#         --expert_cache_size 16 \
-#         --world_size $num_gpus \
-#         --batch_size 2000 \
-#         --enable_router_skew True \
-#         --router_skew 0.5 \
-#         --router_num_experts_skew 10 \
-#         --path "outputs/timetime/multi/harmony_router_skew50_min"
-
-# python3 src/start_harmony.py \
-#         --dataset $dataset \
-#         --num_samples $num_samples \
-#         --seq_len $seq_len \
-#         --model_name "google/switch-base-$num_experts" \
-#         --num_experts $num_experts \
-#         --scheduling_policy "harmony" \
-#         --expert_cache_size 16 \
-#         --world_size $num_gpus \
-#         --batch_size 2000 \
-#         --enable_router_skew True \
-#         --router_skew 0.5 \
-#         --disable_async_fetch True \
-#         --router_num_experts_skew 10 \
-#         --path "outputs/timetime/multi/harmony_no_async_fetch_router_skew50"
-
-#  python3 src/start_fastmoe.py \
-#          --dataset $dataset \
-#          --num_samples $num_samples \
-#          --seq_len $seq_len \
-#          --num_experts $num_experts \
-#          --model_name "google/switch-base-128" \
-#          --world_size $num_gpus \
-#          --batch_size 2000 \
-#          --enable_router_skew True \
-#          --router_skew 0.5 \
-#          --router_num_experts_skew 10 \
-#          --pa "outputs/timetime/multi/fastmoe_router_skew50"
+#         --expert_cache_size $expert_cache_size \
+#         --world_size $world_size \
+#         --eq_tokens $eq_tokens \
+#         --expert_fetching_strategy "sync-cpu" \
+#         --warmup_rounds $warmup_len \
+#         --enable_router_skew $enable_skew \
+#         --enable_router_random $enable_random \
+#         --enable_router_uniform $enable_uniform \
+#         --router_skew $skew \
+#         --router_num_experts_skewed $num_experts_skewed \
+#         --pa "outputs/timetime/$datetime/harmony-sync"
 
 
 
-
-
-
-
-seq_len=12
-batch_size=1
-num_samples=1
+# seq_len=12
+# batch_size=1
+# num_samples=1
 
 # MIXTRAL
 # python3 src/start_harmony.py \
@@ -95,15 +107,15 @@ num_samples=1
 #         --eq_tokens 1024 \
 #         --path "outputs/timetime/mixtral_multi/harmony_router_skew50-2"
 
-python3 src/start_fastmoe.py \
-        --dataset $dataset \
-        --num_samples $num_samples \
-        --seq_len $seq_len \
-        --world_size 8 \
-        --model_name "mistralai/Mixtral-8x7B-Instruct-v0.1" \
-        --num_experts 8 \
-        --batch_size $batch_size \
-        --enable_router_skew True \
-        --router_skew 0.5 \
-        --router_num_experts_skew 2 \
-        --pa "outputs/timetime/mixtral_multi/fastmoe_router_skew50"
+# python3 src/start_fastmoe.py \
+#         --dataset $dataset \
+#         --num_samples $num_samples \
+#         --seq_len $seq_len \
+#         --world_size 8 \
+#         --model_name "mistralai/Mixtral-8x7B-Instruct-v0.1" \
+#         --num_experts 8 \
+#         --batch_size $batch_size \
+#         --enable_router_skew True \
+#         --router_skew 0.5 \
+#         --router_num_experts_skew 2 \
+#         --pa "outputs/timetime/mixtral_multi/fastmoe_router_skew50"

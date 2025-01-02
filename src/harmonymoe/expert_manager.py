@@ -67,8 +67,8 @@ class ExpertManager:
         )
 
         if fetching_strategy == "async-cpu":
-            #self.executor = fetching_strategies.AsynchronousCPU(config)
-            self.executor = fetching_strategies.AsynchronousCPUAllStreams(config)
+            self.executor = fetching_strategies.AsynchronousCPU(config)
+            #self.executor = fetching_strategies.AsynchronousCPUAllStreams(config)
         elif fetching_strategy == "sync-cpu":
             self.executor = fetching_strategies.SynchronousCPU(config)
         elif fetching_strategy == "gpu":
