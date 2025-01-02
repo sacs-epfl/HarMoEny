@@ -1,6 +1,6 @@
 datetime=$(date +"%Y-%m-%d_%H-%M")
 
-num_samples=1280
+num_samples=384
 seq_len=512
 batch_size=16
 world_size=8
@@ -27,7 +27,7 @@ python3 src/start_harmony.py \
         --world_size $world_size \
         --eq_tokens $eq_tokens \
         --expert_fetching_strategy $expert_fetching_strategy \
-        --warmup_rounds 3 \
+        --warmup_rounds 1 \
         --enable_router_skew $enable_skew \
         --enable_router_random $enable_random \
         --enable_router_uniform $enable_uniform \
