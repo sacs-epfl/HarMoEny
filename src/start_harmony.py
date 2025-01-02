@@ -46,14 +46,74 @@ def setup(rank, timeout=timedelta(minutes=30)):
         "nccl", rank=rank, world_size=args.world_size, timeout=timeout
     )
 
+def generate_model():
+    model = AutoModel.from_pretrained(args.model_name)
 
-def run_inference_workload(rank, model):
+    # experts = get_moe_experts(model, args.type_moe, args.name_experts)
+
+    # for layer_experts in experts:
+    #     for expert in layer_experts:
+    #         for param in expert.parameters():
+    #             param.data.share_memory_()
+
+    # for layer_experts in experts:
+    #     for expert in layer_experts:
+    #         for param in expert.parameters():
+    #             param.data = param.data.pin_memory()
+
+    # pinned_experts = []
+    # for layer_experts in experts:
+    #     layer_pinned = []
+    #     for expert in layer_experts:
+    #         # Create a pinned state_dict for each expert
+    #         pinned_state_dict = {
+    #             name: param.detach().cpu().pin_memory()
+    #             for name, param in expert.state_dict().items()
+    #         }
+    #         layer_pinned.append(pinned_state_dict)
+    #     pinned_experts.append(layer_pinned)
+
+    config = MoEConfig(
+        scheduling_policy=args.scheduling_policy,
+        cache_policy=args.cache_policy,
+        expert_cache_size=args.expert_cache_size,
+        eq_tokens=args.eq_tokens,
+        d_model=args.d_model,
+        world_size=args.world_size,
+        expert_placement=args.expert_placement,
+        fetching_strategy=args.expert_fetching_strategy,
+        model_name=args.model_name,
+        num_experts=args.num_experts,
+        enable_skew=args.enable_router_skew,
+        enable_random=args.enable_router_random,
+        enable_uniform=args.enable_router_uniform,
+        skew=args.router_skew,
+        num_experts_skewed=args.router_num_experts_skewed,
+    )
+
+    replace_moe_layer(
+        model,
+        args.type_moe_parent,
+        args.type_moe,
+        args.name_experts,
+        args.router_tensor_path,
+        None,
+        config,
+    )
+
+    logger.info("Finished loading model")
+
+    return model
+
+#def run_inference_workload(rank, model):
+def run_inference_workload(rank):
     try:
         logger.info(f"Starting process {rank}")
 
         mp.current_process().name = f"Worker-{rank}"
         setup(rank)
 
+        model = generate_model()
         model.cuda()
         model.eval()
 
@@ -160,59 +220,15 @@ def signal_handler(sig, frame):
     sys.exit(0)
 
 
-def generate_model():
-    model = AutoModel.from_pretrained(args.model_name)
 
-    experts = get_moe_experts(model, args.type_moe, args.name_experts)
-
-    for layer_experts in experts:
-        for expert in layer_experts:
-            for param in expert.parameters():
-                param.data.share_memory_()
-
-    for layer_experts in experts:
-        for expert in layer_experts:
-            for param in expert.parameters():
-                param.data.pin_memory()
-
-    config = MoEConfig(
-        scheduling_policy=args.scheduling_policy,
-        cache_policy=args.cache_policy,
-        expert_cache_size=args.expert_cache_size,
-        eq_tokens=args.eq_tokens,
-        d_model=args.d_model,
-        world_size=args.world_size,
-        expert_placement=args.expert_placement,
-        fetching_strategy=args.expert_fetching_strategy,
-        model_name=args.model_name,
-        num_experts=args.num_experts,
-        enable_skew=args.enable_router_skew,
-        enable_random=args.enable_router_random,
-        enable_uniform=args.enable_router_uniform,
-        skew=args.router_skew,
-        num_experts_skewed=args.router_num_experts_skewed,
-    )
-
-    replace_moe_layer(
-        model,
-        args.type_moe_parent,
-        args.type_moe,
-        args.router_tensor_path,
-        experts,
-        config,
-    )
-
-    logger.info("Finished loading model")
-
-    return model
-
-def launch_processes_and_wait(model):
+# def launch_processes_and_wait(model):
+def launch_processes_and_wait():
     processes = [None] * args.world_size
 
     def start_process(i):
         process = mp.Process(
             target=run_inference_workload,
-            args=(i, model),
+            args=(i,),
         )
         process.start()
         return i, process
@@ -235,12 +251,13 @@ if __name__ == "__main__":
 
     signal.signal(signal.SIGINT, signal_handler)
 
-    model = generate_model()
+    #model = generate_model()
 
     stats = Stats(gpu=True, cpu=True, num_gpus=args.world_size)
     stats.start()
 
-    launch_processes_and_wait(model)
+    #launch_processes_and_wait(model)
+    launch_processes_and_wait()
 
     stats.stop()
     stats.save(path=args.path)

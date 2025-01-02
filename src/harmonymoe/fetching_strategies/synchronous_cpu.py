@@ -12,11 +12,13 @@ class SynchronousCPU:
             f"Loading expert {expert_idx} into slot {slot_idx}", color="green"
         ):
             with torch.no_grad():
-                pinned_state_dict = self.config.experts[expert_idx].state_dict()
+                pinned_state_dict = self.config.experts[expert_idx]#.state_dict()
+
                 cached_expert = self.config.cached_experts[slot_idx]
                 for name, param in cached_expert.named_parameters():
                     cpu_param = pinned_state_dict[name]
                     param.copy_(cpu_param, non_blocking=False)
+                    
                 self.load_finished.record()
                 self.load_finished.synchronize()
 

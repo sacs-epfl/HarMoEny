@@ -13,6 +13,7 @@ class ExpertManager:
     def __init__(
         self,
         experts: nn.ModuleList,
+        expert_example: nn.Module,
         cache_size: int,
         cache=None,
         fetching_strategy="async-cpu",
@@ -36,11 +37,11 @@ class ExpertManager:
         self.comp_stream = torch.cuda.Stream()
 
         self.cached_experts = [
-            copy.deepcopy(self.experts[0]).cuda() for _ in range(self.cache_size)
+            copy.deepcopy(expert_example).cuda() for _ in range(self.cache_size)
         ]
 
         self.buffer_expert = (
-            copy.deepcopy(self.experts[0]).cuda()
+            copy.deepcopy(expert_example).cuda()
             if self.fetching_strategy == "gpu"
             else None
         )
@@ -80,7 +81,7 @@ class ExpertManager:
 
     def load_expert_into_slot(self, expert_idx, slot_idx):
         with torch.no_grad():
-            pinned_state_dict = self.experts[expert_idx].state_dict()
+            pinned_state_dict = self.experts[expert_idx]#.state_dict()
             cached_expert = self.cached_experts[slot_idx]
             for name, param in cached_expert.named_parameters():
                 cpu_param = pinned_state_dict[name]

@@ -14,6 +14,7 @@ import csv
 @dataclass
 class MoEConfig:
     experts: list[any] = None
+    expert_example: any = None
     router_weights: any = None
     layer_idx: int = None
     scheduling_policy: str = "adnexus"
@@ -97,6 +98,7 @@ class MoELayer(nn.Module):
 
         self.expert_manager = ExpertManager(
             self.config.experts,
+            self.config.expert_example,
             self.config.expert_cache_size,
             cache=self.scheduler.get_cache(),
             fetching_strategy=self.config.fetching_strategy,

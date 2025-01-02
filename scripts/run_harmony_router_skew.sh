@@ -1,8 +1,8 @@
 datetime=$(date +"%Y-%m-%d_%H-%M")
 
-num_samples=384
-seq_len=512
-batch_size=16
+num_samples=1152
+seq_len=1024
+batch_size=48
 world_size=8
 expert_cache_size=16
 num_experts=128
