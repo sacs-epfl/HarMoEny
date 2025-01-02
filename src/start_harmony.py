@@ -31,9 +31,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 args = Args().harmony()
 
-# rank = int(os.environ.get("RANK", 0))
-# world_size = int(os.environ.get("WORLD_SIZE", 1))
-
 def setup(rank, timeout=timedelta(minutes=30)):
     os.environ["HF_HOME"] = "/cache"
     os.environ["TRITON_HOME"] = "/.triton"
@@ -46,9 +43,6 @@ def setup(rank, timeout=timedelta(minutes=30)):
     if torch.cuda.is_available():
         torch.cuda.set_device(rank)
 
-    # dist.init_process_group(
-    #     "nccl", rank=rank, world_size=world_size, timeout=timeout
-    # )
     dist.init_process_group(
         backend="nccl" if torch.cuda.is_available() else "gloo",
         init_method="env://",
@@ -59,30 +53,6 @@ def setup(rank, timeout=timedelta(minutes=30)):
 
 def generate_model(rank):
     model = AutoModel.from_pretrained(args.model_name)
-
-    # experts = get_moe_experts(model, args.type_moe, args.name_experts)
-
-    # for layer_experts in experts:
-    #     for expert in layer_experts:
-    #         for param in expert.parameters():
-    #             param.data.share_memory_()
-
-    # for layer_experts in experts:
-    #     for expert in layer_experts:
-    #         for param in expert.parameters():
-    #             param.data = param.data.pin_memory()
-
-    # pinned_experts = []
-    # for layer_experts in experts:
-    #     layer_pinned = []
-    #     for expert in layer_experts:
-    #         # Create a pinned state_dict for each expert
-    #         pinned_state_dict = {
-    #             name: param.detach().cpu().pin_memory()
-    #             for name, param in expert.state_dict().items()
-    #         }
-    #         layer_pinned.append(pinned_state_dict)
-    #     pinned_experts.append(layer_pinned)
 
     config = MoEConfig(
         rank=rank,
@@ -116,7 +86,6 @@ def generate_model(rank):
 
     return model
 
-#def run_inference_workload(rank, model):
 def run_inference_workload(rank):
     try:
         logger.info(f"Starting process {rank}")
@@ -128,12 +97,6 @@ def run_inference_workload(rank):
         model = generate_model(rank)
         model.cuda()
         model.eval()
-
-        # # We need to call prepare on the MoE layers to create the cuda events
-        # # The cuda events cannot be created at __init__ since the model object
-        # # is transfered to different processes which have different GPUs
-        # for l in get_moe_layers(model):
-        #     l.prepare()
 
         tokenizer = AutoTokenizer.from_pretrained(args.model_name)
 
@@ -223,17 +186,13 @@ def run_standard_experiment(model, loader):
 
     return latencies, run_start, run_end
 
+def signal_handler(sig, frame):
+    logger.info("Main process received Ctrl+C! Terminating all child processes...")
+    for child in mp.active_children():
+        logger.info(f"Terminating child process PID: {child.pid}")
+        child.terminate()
+    sys.exit(0)
 
-# def signal_handler(sig, frame):
-#     logger.info("Main process received Ctrl+C! Terminating all child processes...")
-#     for child in mp.active_children():
-#         logger.info(f"Terminating child process PID: {child.pid}")
-#         child.terminate()
-#     sys.exit(0)
-
-
-
-#def launch_processes_and_wait(model):
 def launch_processes_and_wait():
     processes = [None] * args.world_size
 
@@ -261,17 +220,14 @@ def launch_processes_and_wait():
 if __name__ == "__main__":
     logging.info(f"Starting Main Process")
 
-    # signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
 
-    #model = generate_model()
+    stats = Stats(gpu=True, cpu=True, num_gpus=args.world_size)
+    stats.start()
 
-    # stats = Stats(gpu=True, cpu=True, num_gpus=args.world_size)
-    # stats.start()
-
-    #launch_processes_and_wait(model)
     launch_processes_and_wait()
 
-    # stats.stop()
-    # stats.save(path=args.path)
+    stats.stop()
+    stats.save(path=args.path)
 
     logger.info("All done :)")
