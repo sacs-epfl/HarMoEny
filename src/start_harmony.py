@@ -31,6 +31,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 args = Args().harmony()
 
+# rank = int(os.environ.get("RANK", 0))
+# world_size = int(os.environ.get("WORLD_SIZE", 1))
 
 def setup(rank, timeout=timedelta(minutes=30)):
     os.environ["HF_HOME"] = "/cache"
@@ -39,14 +41,23 @@ def setup(rank, timeout=timedelta(minutes=30)):
     os.environ["MASTER_ADDR"] = "localhost"
     os.environ["MASTER_PORT"] = args.port
 
-    torch.set_num_threads(mp.cpu_count() // args.world_size)
-    torch.cuda.set_device(rank)
+    torch.set_num_threads(os.cpu_count() // args.world_size)
 
+    if torch.cuda.is_available():
+        torch.cuda.set_device(rank)
+
+    # dist.init_process_group(
+    #     "nccl", rank=rank, world_size=world_size, timeout=timeout
+    # )
     dist.init_process_group(
-        "nccl", rank=rank, world_size=args.world_size, timeout=timeout
+        backend="nccl" if torch.cuda.is_available() else "gloo",
+        init_method="env://",
+        rank=rank,
+        world_size=args.world_size,
+        timeout=timeout
     )
 
-def generate_model():
+def generate_model(rank):
     model = AutoModel.from_pretrained(args.model_name)
 
     # experts = get_moe_experts(model, args.type_moe, args.name_experts)
@@ -74,12 +85,13 @@ def generate_model():
     #     pinned_experts.append(layer_pinned)
 
     config = MoEConfig(
+        rank=rank,
+        world_size=args.world_size,
         scheduling_policy=args.scheduling_policy,
         cache_policy=args.cache_policy,
         expert_cache_size=args.expert_cache_size,
         eq_tokens=args.eq_tokens,
         d_model=args.d_model,
-        world_size=args.world_size,
         expert_placement=args.expert_placement,
         fetching_strategy=args.expert_fetching_strategy,
         model_name=args.model_name,
@@ -97,7 +109,6 @@ def generate_model():
         args.type_moe,
         args.name_experts,
         args.router_tensor_path,
-        None,
         config,
     )
 
@@ -110,18 +121,19 @@ def run_inference_workload(rank):
     try:
         logger.info(f"Starting process {rank}")
 
-        mp.current_process().name = f"Worker-{rank}"
         setup(rank)
+        
+        mp.current_process().name = f"Worker-{rank}"
 
-        model = generate_model()
+        model = generate_model(rank)
         model.cuda()
         model.eval()
 
-        # We need to call prepare on the MoE layers to create the cuda events
-        # The cuda events cannot be created at __init__ since the model object
-        # is transfered to different processes which have different GPUs
-        for l in get_moe_layers(model):
-            l.prepare()
+        # # We need to call prepare on the MoE layers to create the cuda events
+        # # The cuda events cannot be created at __init__ since the model object
+        # # is transfered to different processes which have different GPUs
+        # for l in get_moe_layers(model):
+        #     l.prepare()
 
         tokenizer = AutoTokenizer.from_pretrained(args.model_name)
 
@@ -135,7 +147,7 @@ def run_inference_workload(rank):
         )
         sampler = DistributedSampler(
             flexible_dataset,
-            num_replicas=dist.get_world_size(),
+            num_replicas=args.world_size,
             rank=rank,
             shuffle=True,
             seed=49,
@@ -212,16 +224,16 @@ def run_standard_experiment(model, loader):
     return latencies, run_start, run_end
 
 
-def signal_handler(sig, frame):
-    logger.info("Main process received Ctrl+C! Terminating all child processes...")
-    for child in mp.active_children():
-        logger.info(f"Terminating child process PID: {child.pid}")
-        child.terminate()
-    sys.exit(0)
+# def signal_handler(sig, frame):
+#     logger.info("Main process received Ctrl+C! Terminating all child processes...")
+#     for child in mp.active_children():
+#         logger.info(f"Terminating child process PID: {child.pid}")
+#         child.terminate()
+#     sys.exit(0)
 
 
 
-# def launch_processes_and_wait(model):
+#def launch_processes_and_wait(model):
 def launch_processes_and_wait():
     processes = [None] * args.world_size
 
@@ -247,19 +259,19 @@ def launch_processes_and_wait():
     logger.info("All processes complete")
 
 if __name__ == "__main__":
-    logging.info("Starting main process")
+    logging.info(f"Starting Main Process")
 
-    signal.signal(signal.SIGINT, signal_handler)
+    # signal.signal(signal.SIGINT, signal_handler)
 
     #model = generate_model()
 
-    stats = Stats(gpu=True, cpu=True, num_gpus=args.world_size)
-    stats.start()
+    # stats = Stats(gpu=True, cpu=True, num_gpus=args.world_size)
+    # stats.start()
 
     #launch_processes_and_wait(model)
     launch_processes_and_wait()
 
-    stats.stop()
-    stats.save(path=args.path)
+    # stats.stop()
+    # stats.save(path=args.path)
 
     logger.info("All done :)")

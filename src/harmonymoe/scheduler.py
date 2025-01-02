@@ -3,12 +3,10 @@ import torch.nn as nn
 import random
 import json
 
-import torch.distributed as dist
-
-
 class Scheduler:
     def __init__(
         self,
+        rank,
         scheduling_policy="deepspeed",
         num_experts=8,
         eq_tokens=150,
@@ -29,7 +27,7 @@ class Scheduler:
         self.expert_to_gpu = None
         self.gpu_to_experts_list = None
 
-        self.rank = dist.get_rank()
+        self.rank = rank
         if self.expert_to_gpu is not None:
             self.expert_to_gpu.cuda()
 
@@ -165,11 +163,10 @@ class Scheduler:
     ):
         tokens_idx = 0
         experts_idx = [0 for _ in range(self.num_experts)]
-        rank = dist.get_rank()
 
         for i in range(self.num_gpus):
             for j in range(self.num_experts):
-                amount = schedule[rank][j][i]
+                amount = schedule[self.rank][j][i]
                 if amount != 0:
                     start = experts_idx[j]
                     hidden_states[expert_indices[j]][start : start + amount] = tokens[

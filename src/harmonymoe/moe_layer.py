@@ -13,6 +13,8 @@ import csv
 
 @dataclass
 class MoEConfig:
+    rank: int
+    world_size: int
     experts: list[any] = None
     expert_example: any = None
     router_weights: any = None
@@ -22,7 +24,6 @@ class MoEConfig:
     expert_cache_size: int = None
     eq_tokens: int = 150
     d_model: int = 768
-    world_size: int = 1
     expert_placement: list = None
     fetching_strategy: str = "async-cpu"
     model_name: str = None
@@ -38,6 +39,12 @@ class MoELayer(nn.Module):
     def __init__(self, config=MoEConfig):
         super(MoELayer, self).__init__()
 
+        self.config = config
+        self.layer_idx = config.layer_idx
+        self.num_experts = config.num_experts
+        self.num_gpus = config.world_size
+        self.d_model = config.d_model
+
         self.router = Router(
             RouterConfig(
                 d_model=config.d_model,
@@ -51,11 +58,27 @@ class MoELayer(nn.Module):
             )
         )
 
-        self.config = config
-        self.layer_idx = config.layer_idx
-        self.num_experts = config.num_experts
-        self.num_gpus = config.world_size
-        self.d_model = config.d_model
+        self.scheduler = Scheduler(
+            self.config.rank,
+            scheduling_policy=self.config.scheduling_policy,
+            num_experts=self.num_experts,
+            eq_tokens=self.config.eq_tokens,
+            d_model=self.d_model,
+            num_gpus=self.num_gpus,
+            expert_placement=self.config.expert_placement,
+            layer_idx=self.layer_idx,
+        )
+
+        self.expert_manager = ExpertManager(
+            self.config.rank,
+            self.config.world_size,
+            self.config.experts,
+            self.config.expert_example,
+            self.config.expert_cache_size,
+            cache=self.scheduler.get_cache(),
+            fetching_strategy=self.config.fetching_strategy,
+            layer_idx=self.layer_idx,
+        )
 
         # For statistics
         self.tot_num_toks_send = []
@@ -70,9 +93,6 @@ class MoELayer(nn.Module):
 
         self.expert_freqs = []
 
-    def prepare(self):
-        self.rank = dist.get_rank()
-
         self.start_pass = torch.cuda.Event(enable_timing=True)
         self.end_pass = torch.cuda.Event(enable_timing=True)
         self.start_metadata = torch.cuda.Event(enable_timing=True)
@@ -85,25 +105,6 @@ class MoELayer(nn.Module):
         self.end_computation = torch.cuda.Event(enable_timing=True)
         self.start_second_transfer = torch.cuda.Event(enable_timing=True)
         self.end_second_transfer = torch.cuda.Event(enable_timing=True)
-
-        self.scheduler = Scheduler(
-            scheduling_policy=self.config.scheduling_policy,
-            num_experts=self.num_experts,
-            eq_tokens=self.config.eq_tokens,
-            d_model=self.d_model,
-            num_gpus=self.num_gpus,
-            expert_placement=self.config.expert_placement,
-            layer_idx=self.layer_idx,
-        )
-
-        self.expert_manager = ExpertManager(
-            self.config.experts,
-            self.config.expert_example,
-            self.config.expert_cache_size,
-            cache=self.scheduler.get_cache(),
-            fetching_strategy=self.config.fetching_strategy,
-            layer_idx=self.layer_idx,
-        )
 
     def get_statistics(self):
         stats = []
@@ -185,7 +186,7 @@ class MoELayer(nn.Module):
         schedule_list = schedule.tolist()
         self.end_schedule.record()
 
-        num_toks_send = schedule[self.rank].sum()
+        num_toks_send = schedule[self.config.rank].sum()
         self.tot_num_toks_send.append(num_toks_send.item())
 
         # If dropping need a way to make update hidden_states passed to distrbute_tokens

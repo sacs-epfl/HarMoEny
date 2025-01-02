@@ -21,7 +21,7 @@ def get_tensor_by_path(module, path):
 
 
 def replace_moe_layer(
-    model, moe_parent_type, moe_type, name_experts, router_tensor_path, shared_experts, config
+    model, moe_parent_type, moe_type, name_experts, router_tensor_path, config
 ):
     _replace_moe_layer(
         model,
@@ -30,7 +30,6 @@ def replace_moe_layer(
         [0],
         name_experts,
         router_tensor_path,
-        shared_experts,
         config,
     )
 
@@ -42,13 +41,12 @@ def _replace_moe_layer(
     layer_idx,
     name_experts,
     router_tensor_path,
-    shared_experts,
     config,
 ):
     if type(model).__name__ == moe_parent_type:
         for child_name, child in model.named_children():
             if type(child).__name__ == moe_type:
-                experts = list(child.experts.values()) # TODO make this dynamic
+                experts = list(get_tensor_by_path(child, name_experts).values()) # TODO make this dynamic
                 pinned_experts = []
                 for expert in experts:
                     # Create a pinned state_dict for each expert
@@ -60,7 +58,6 @@ def _replace_moe_layer(
 
                 local_config = dataclasses.replace(config)
                 local_config.layer_idx = layer_idx[0]
-                #local_config.experts = shared_experts[local_config.layer_idx]
                 local_config.experts = pinned_experts
                 local_config.expert_example = experts[0]
                 local_config.router_weights = get_tensor_by_path(
@@ -80,7 +77,6 @@ def _replace_moe_layer(
                 layer_idx,
                 name_experts,
                 router_tensor_path,
-                shared_experts,
                 config,
             )
 

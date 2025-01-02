@@ -12,6 +12,8 @@ from .fetching_strategies import FetchingStrategyConfig
 class ExpertManager:
     def __init__(
         self,
+        rank,
+        world_size,
         experts: nn.ModuleList,
         expert_example: nn.Module,
         cache_size: int,
@@ -24,14 +26,14 @@ class ExpertManager:
         self.cache = cache  # Get rid of cache and just use start and end, assume that experts are incrementing order
         self.cache_size = cache_size
         self.layer_idx = layer_idx
-        self.rank = dist.get_rank()
+        self.rank = rank
         self.fetching_strategy = fetching_strategy
 
         self.validate_arguments()
 
         self.rng = random.Random(32)
 
-        self.world_size = dist.get_world_size()
+        self.world_size = world_size
         self.num_experts_per_gpu = self.num_experts // self.world_size
         self.load_stream = torch.cuda.Stream()
         self.comp_stream = torch.cuda.Stream()
