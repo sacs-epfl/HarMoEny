@@ -66,6 +66,7 @@ class Router(nn.Module):
         expert_indices = torch.multinomial(
             multinomial_probs, num_samples=x.shape[0], replacement=True
         )
+
         expert_indices = nn.functional.one_hot(
             expert_indices, num_classes=self.config.num_experts
         )
