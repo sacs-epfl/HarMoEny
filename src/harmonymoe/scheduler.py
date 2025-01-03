@@ -72,11 +72,14 @@ class Scheduler:
 
     def get_cache(self):
         if self.gpu_to_experts_list is not None:
-            return list(
-                map(
-                    lambda x: list(map(lambda y: y.item(), x)), self.gpu_to_experts_list
-                )
-            )
+            # if self.scheduling_policy == "exflow":
+            #     return self.gpu_to_experts_list[:]
+            # return list(
+            #     map(
+            #         lambda x: list(map(lambda y: y.item(), x)), self.gpu_to_experts_list
+            #     )
+            # )
+            return self.gpu_to_experts_list
         else:
             return None
 
@@ -226,7 +229,7 @@ class Scheduler:
 
     def generate_expert_gpu_to_gpu_expert(self, expert_gpu):
         return [
-            (expert_gpu == i).nonzero(as_tuple=False).flatten()
+            (expert_gpu == i).nonzero(as_tuple=False).flatten().tolist()
             for i in range(self.num_gpus)
         ]
 

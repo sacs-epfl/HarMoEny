@@ -4,6 +4,7 @@ import nvtx
 class AsynchronousCPU:
     def __init__(self, config):
         self.config = config
+        self.local_cache = self.config.cache[self.config.rank]
 
         self.load_stream = torch.cuda.Stream()
         self.comp_stream = torch.cuda.Stream()
@@ -13,6 +14,8 @@ class AsynchronousCPU:
         self.expert_loaded = [
             torch.cuda.Event(enable_timing=False) for _ in range(config.num_experts)
         ]
+
+        self.loaded_not_loaded = self.loaded_not_loaded_mixed
 
 
     def load_expert_into_slot(self, expert_idx, slot_idx):
@@ -32,13 +35,10 @@ class AsynchronousCPU:
 
                 self.expert_loaded[expert_idx].record(stream=self.load_stream)
 
-    def generate_work_order(self, expert_mask):
+    def loaded_not_loaded_ordered(self, expert_mask):
         loaded = []
         not_loaded = []
-        slots = []
 
-        # First collect all experts that need to execute
-        # Break them down between those loaded and not loaded
         for i in range(self.config.num_experts):
             if expert_mask[i].shape[0] != 0:
                 if (
@@ -55,6 +55,34 @@ class AsynchronousCPU:
                     )
                 else:
                     not_loaded.append(i)
+
+        return loaded, not_loaded 
+
+    def loaded_not_loaded_mixed(self, expert_mask):
+        loaded = []
+        not_loaded = []
+
+        for i in range(self.config.num_experts):
+            if expert_mask[i].shape[0] != 0:
+                try:
+                    slot_idx = self.local_cache.index(i)
+
+                    # expert_idx, slot_idx, num_toks
+                    loaded.append(
+                        (
+                            i,
+                            slot_idx,
+                            expert_mask[i].shape[0]
+                        )
+                    )
+                except ValueError:
+                    not_loaded.append(i)
+        
+        return loaded, not_loaded
+
+    def generate_work_order(self, expert_mask):
+        slots = []
+        loaded, not_loaded = self.loaded_not_loaded(expert_mask)
 
         loaded.sort(reverse=True, key=lambda x: x[2])
         loaded_slots = list(map(lambda x: x[1], loaded))
@@ -88,7 +116,7 @@ class AsynchronousCPU:
             #     f"Executing expert {expert_idx} on slot {slot_idx}", color="blue"
             # ):
             with torch.cuda.stream(self.comp_stream):
-                if expert_idx != self.config.cache[self.config.rank][slot_idx]:
+                if expert_idx != self.local_cache[slot_idx]:
                     self.comp_stream.wait_event(
                         self.expert_loaded[expert_idx]
                     )
@@ -104,10 +132,10 @@ class AsynchronousCPU:
                 self.load_expert_into_slot(need_loading[next_load_idx], slot_idx)
                 next_load_idx += 1
             elif (
-                expert_idx != self.config.cache[self.config.rank][slot_idx]
+                expert_idx != self.local_cache[slot_idx]
             ):  # Nothing else to load, do I need to bring in the original?
                 self.load_expert_into_slot(
-                    self.config.cache[self.config.rank][slot_idx], slot_idx
+                    self.local_cache[slot_idx], slot_idx
                 )
 
         return tokens

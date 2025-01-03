@@ -13,7 +13,7 @@ enable_uniform=False
 eq_tokens=1512
 warmup_len=3
 
-skews=(0.0 0.5 0.9 0.99)
+skews=(0.0 0.5 0.9)
 policies=("deepspeed" "harmony" "drop" "even_split" "exflow")
 
 batch_size_harmony_drop_even_split=64
