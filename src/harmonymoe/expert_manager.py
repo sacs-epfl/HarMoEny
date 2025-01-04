@@ -83,7 +83,7 @@ class ExpertManager:
 
     def load_expert_into_slot(self, expert_idx, slot_idx):
         with torch.no_grad():
-            pinned_state_dict = self.experts[expert_idx]#.state_dict()
+            pinned_state_dict = self.experts[expert_idx]
             cached_expert = self.cached_experts[slot_idx]
             for name, param in cached_expert.named_parameters():
                 cpu_param = pinned_state_dict[name]

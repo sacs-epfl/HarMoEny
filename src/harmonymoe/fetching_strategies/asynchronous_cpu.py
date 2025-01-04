@@ -14,6 +14,7 @@ class AsynchronousCPU:
         self.expert_loaded = [
             torch.cuda.Event(enable_timing=False) for _ in range(config.num_experts)
         ]
+        self.finished_event = torch.cuda.Event(enable_timing=False)
 
         self.loaded_not_loaded = self.loaded_not_loaded_mixed
 
@@ -107,6 +108,7 @@ class AsynchronousCPU:
 
     def execute_job(self, tokens, expert_mask, schedule=None):
         expert_order, need_loading, slot_idxs = self.generate_work_order(expert_mask)
+        last_expert_exec = expert_order[-1] if len(expert_order) > 0 else None
 
         next_load_idx = 0
         for idx, expert_idx in enumerate(expert_order):
@@ -137,5 +139,12 @@ class AsynchronousCPU:
                 self.load_expert_into_slot(
                     self.local_cache[slot_idx], slot_idx
                 )
+            
+            if expert_idx == last_expert_exec:
+                if expert_idx != self.local_cache[slot_idx]:
+                    self.finished_event.record(stream=self.load_stream)
+                else:
+                    self.finished_event.record(stream=self.comp_stream)
 
+        self.finished_event.synchronize()
         return tokens

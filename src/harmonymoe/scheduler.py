@@ -346,7 +346,8 @@ class Scheduler:
 
         return schedule
     
-    def schedule_harmony_2(self, meta):
+    # Would be better with less tokens 
+    def schedule_harmony(self, meta):
         schedule = self.schedule_fixed(meta)
 
         avg = meta.sum().item() // self.num_gpus
@@ -381,21 +382,17 @@ class Scheduler:
 
                 if tokens_to_move <= 0:
                     break # We may have removed self.eq_tokens which is < than the amount overloaded
-                
-                # if self.rank == 0:
-                #     print(f"GPU {sender_idx} has {tokens_to_move} of expert {expert_idx} to send to GPU {least_idx} instead of GPU {overloaded_idx}")
 
                 tokens_send = torch.min(tokens_to_move, avg - gpu_amt[least_idx])
 
-                schedule[sender_idx, expert_idx, overloaded_idx] -= tokens_send
+                schedule[sender_idx, expert_idx, overloaded_idx] -= tokens_send # This will impact senders
                 schedule[sender_idx, expert_idx, least_idx] += tokens_send
 
                 gpu_amt[overloaded_idx] -= tokens_send
                 gpu_amt[least_idx] += tokens_send
 
                 amount_overloaded -= tokens_send
-                # senders[sender_idx] -= tokens_send
-                # We can just remove sender_idx from senders, but would it be more expensive?
+
 
         return schedule
 

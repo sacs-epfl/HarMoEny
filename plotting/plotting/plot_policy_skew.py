@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 from utils import save_plot
 
-policies = ["deepspeed", "exflow", "even_split", "harmony", "drop"]
+policies = ["even_split", "deepspeed", "exflow", "harmony", "drop"]
 datasets = [0.0, 0.5, 0.9]
 num_moe_layers = 12
 
@@ -50,7 +50,7 @@ def plot_workload_duration_policy_vs_dataset():
         ax.set_ylabel(y)
         ax.legend(title="policy")
 
-        save_plot(plt, f"../figures/policies/skew/workload_{y}_policy_vs_dataset.png")
+        save_plot(plt, f"../figures/policies/skew/workload_{y.split(" ")[0]}_policy_vs_dataset.png")
 
 if __name__ == "__main__":
     plot_workload_duration_policy_vs_dataset()

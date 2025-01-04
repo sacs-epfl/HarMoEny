@@ -1,0 +1,54 @@
+datetime=$(date +"%Y-%m-%d_%H-%M")
+
+num_samples=1024000
+seq_len=1024
+world_size=8
+expert_cache_size=16
+num_experts=128
+expert_fetching_strategy="async-cpu"
+eq_tokens=1512
+warmup_len=3
+
+
+policies=("deepspeed" "harmony" "drop" "even_split" "exflow")
+datasets=("wmt19" "bookcorpus" "wikitext" "random")
+
+# datasets=("wikitext")
+# policies=("harmony")
+
+# datasets=("wikitext" "wmt19")
+# policies=("harmony")
+
+# originally 64
+batch_size_deepspeed_exflow=64
+batch_size_harmony_drop_even_split=64
+
+cd ..
+for dataset_index in "${!datasets[@]}"
+do
+    dataset="${datasets[$dataset_index]}"
+    for policy in "${policies[@]}"
+    do
+        if [[ "$policy" == "harmony" || "$policy" == "drop" || "$policy" == "even_split" ]]; then
+            batch_size=$batch_size_harmony_drop_even_split
+        else
+            batch_size=$batch_size_deepspeed_exflow
+        fi
+
+        python3 src/start_harmony.py \
+                --dataset $dataset \
+                --num_samples $num_samples \
+                --batch_size $batch_size \
+                --seq_len $seq_len \
+                --model_name "google/switch-base-$num_experts" \
+                --num_experts $num_experts \
+                --scheduling_policy $policy \
+                --expert_cache_size $expert_cache_size \
+                --expert_placement "ExFlow/placement/exp${num_experts}_gpu${world_size}.json" \
+                --world_size $world_size \
+                --eq_tokens $eq_tokens \
+                --expert_fetching_strategy "async-cpu" \
+                --warmup_rounds $warmup_len \
+                --pa "outputs/exp-policies-dataset/$datetime/$dataset/$policy"
+    done    
+done

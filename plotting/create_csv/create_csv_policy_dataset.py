@@ -4,7 +4,7 @@ import pandas as pd
 import ast
 import os
 
-directory_path = "../data/policies/dataset"
+directory_path = "../outputs/exp-policies-dataset"
 data = Data(directory_path)
 
 policies = ["deepspeed", "exflow", "even_split", "harmony", "drop"]
@@ -16,10 +16,12 @@ def create_workload_duration_policy_vs_dataset():
     for policy in policies:
         for dataset in datasets:
             _df = data.load(f"{dataset}/{policy}/0/e2e.csv")
+            meta = data.read_meta(f"{dataset}/{policy}")
             df.append({
                 "policy": policy,
                 "dataset": dataset,
-                "duration (s)": _df["latency (s)"].sum(axis=0)
+                "duration (s)": _df["latency (s)"].sum(axis=0),
+                "throughput (toks/s)": meta["num_samples"] / _df["latency (s)"].sum(axis=0)
             })
     save_pd(pd.DataFrame(df), "../data_processed/policies/dataset/workload_duration_policy_vs_dataset.csv")
 
