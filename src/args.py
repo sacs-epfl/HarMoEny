@@ -26,6 +26,12 @@ class Args:
         parser.add_argument("--seq_len", default=120, type=int)
         parser.add_argument("--num_experts", default=8, type=int)
         parser.add_argument(
+            "--loader",
+            default="transformers",
+            type=str,
+            help="System to load model",
+        )
+        parser.add_argument(
             "--model_name",
             default="google/switch-base-64",
             type=str,

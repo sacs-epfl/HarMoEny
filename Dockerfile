@@ -19,7 +19,8 @@ RUN pip uninstall -y pynvml
 # Install system-wide packages
 RUN pip install \
     setuptools==75.6.0 \
-    wheel==0.45.0 \
+    wheel==0.45.1 \
+    optimum==1.23.3 \
     huggingface_hub==0.26.1 \
     datasets==3.0.2 \
     nvidia-ml-py3==7.352.0  \
@@ -54,6 +55,8 @@ RUN groupadd -f -g ${GROUP_ID} ${USER_NAME} || true && \
 # Create directory for non-root pip installations
 RUN mkdir -p /home/${USER_NAME}/.local && \
     chown -R ${USER_NAME}:${USER_NAME} /home/${USER_NAME}/.local
+
+RUN chown -R ${USER_NAME}:${USER_NAME} /.triton /workspace
 
 # Set environment variables
 ENV PATH="/home/${USER_NAME}/.local/bin:${PATH}"

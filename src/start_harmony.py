@@ -17,6 +17,7 @@ from concurrent.futures import as_completed, ThreadPoolExecutor
 
 from torch.utils.data import DataLoader, DistributedSampler
 from transformers import AutoTokenizer, AutoModel
+from awq import AutoAWQForCausalLM
 
 from flexible_dataset import FlexibleDataset
 from stats import Stats
@@ -52,7 +53,13 @@ def setup(rank, timeout=timedelta(minutes=30)):
     )
 
 def generate_model(rank):
-    model = AutoModel.from_pretrained(args.model_name)
+
+    if args.loader == "transformers":
+        model = AutoModel.from_pretrained(args.model_name)
+    elif args.loader == "awq":
+        model = AutoAWQForCausalLM.from_pretrained(args.model_name, torch_dtype=torch.float16, low_cpu_mem_usage=True)
+    else:
+        raise ValueError(f"{args.loader} is not a valid loader")
 
     config = MoEConfig(
         rank=rank,

@@ -10,11 +10,12 @@ enable_skew=True
 num_experts_skewed=1
 enable_random=False
 enable_uniform=False
-eq_tokens=1512
+eq_tokens=1512 # 1512
 warmup_len=3
 
 skews=(0.0 0.5 0.9)
 policies=("deepspeed" "harmony" "drop" "even_split" "exflow")
+policies=("harmony")
 
 batch_size_harmony_drop_even_split=64
 batch_size_deepspeed_exflow=(64 32 18 14)

@@ -46,7 +46,10 @@ def _replace_moe_layer(
     if type(model).__name__ == moe_parent_type:
         for child_name, child in model.named_children():
             if type(child).__name__ == moe_type:
-                experts = list(get_tensor_by_path(child, name_experts).values()) # TODO make this dynamic
+                experts = get_tensor_by_path(child, name_experts)
+                if isinstance(experts, nn.ModuleDict):
+                    experts = list(experts.values())
+
                 pinned_experts = []
                 for expert in experts:
                     # Create a pinned state_dict for each expert
@@ -60,9 +63,10 @@ def _replace_moe_layer(
                 local_config.layer_idx = layer_idx[0]
                 local_config.experts = pinned_experts
                 local_config.expert_example = experts[0]
-                local_config.router_weights = get_tensor_by_path(
+                router = get_tensor_by_path(
                     child, router_tensor_path
-                ).weight
+                )
+                local_config.router_weights = router.weight
                 new_moe_layer = MoELayer(local_config)
 
                 layer_idx[0] += 1

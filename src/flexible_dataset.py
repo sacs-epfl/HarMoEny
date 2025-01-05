@@ -112,9 +112,11 @@ class FlexibleDataset(Dataset):
         # Create the input dictionary
         encoder_tokenized = {
             "input_ids": tokenized_text.squeeze(0),
-            "attention_mask": (tokenized_text != self.tokenizer.pad_token_id).long().squeeze(0),
-            "decoder_input_ids": torch.tensor([self.tokenizer.pad_token_id])
+            "attention_mask": torch.full((self.max_length,), 1),
         }
+
+        if self.is_switch:
+             encoder_tokenized["decoder_input_ids"] = torch.tensor([self.tokenizer.pad_token_id])
 
         return encoder_tokenized
     

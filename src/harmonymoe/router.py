@@ -33,7 +33,7 @@ class Router(nn.Module):
         else:
             self.forward = self.standard_forward
             self.router = nn.Linear(
-                self.config.d_model, self.config.num_experts, bias=False
+                self.config.d_model, self.config.num_experts, bias=False, dtype=self.config.weights.dtype
             )
             print("Loading weights")
             with torch.no_grad():
