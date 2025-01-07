@@ -107,7 +107,7 @@ class Scheduler:
         return self.scheduler(meta)
 
     def distribute_tokens(self, schedule, hidden_states, expert_indices, num_toks_send):
-        tokens = torch.empty((num_toks_send, self.d_model), device="cuda")
+        tokens = torch.empty((num_toks_send, self.d_model), device="cuda", dtype=hidden_states.dtype)
         tokens_idx = 0
         send_splits = []
 
@@ -180,11 +180,11 @@ class Scheduler:
 
         return hidden_states
 
-    def allocate_recv_tensors(self, schedule):
+    def allocate_recv_tensors(self, schedule, dtype=torch.float):
         recv_splits = torch.sum(schedule[:, :, self.rank], dim=(1))  # Shape (num_gpus,)
 
         return (
-            torch.empty((recv_splits.sum(), self.d_model), device="cuda"),
+            torch.empty((recv_splits.sum(), self.d_model), device="cuda", dtype=dtype),
             recv_splits.tolist(),
         )
 

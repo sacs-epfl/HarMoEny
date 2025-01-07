@@ -1,21 +1,26 @@
 datetime=$(date +"%Y-%m-%d_%H-%M")
 
-num_samples=2560
+num_samples=15360
 seq_len=1024
-world_size=4
-expert_cache_size=2
+world_size=8
+expert_cache_size=16
+num_experts=128
 expert_fetching_strategy="async-cpu"
-eq_tokens=1024 # will prob need updating
+eq_tokens=128
 warmup_len=3
 
-# exflow will need to be rerun for this model exflow removed temporarily
-policies=("even_split" "harmony" "deepspeed" "drop")
+
+policies=("deepspeed" "harmony" "drop" "even_split" "exflow")
 datasets=("wmt19" "bookcorpus" "wikitext" "random")
 
-policies=("even_split")
-datasets=("random")
+# datasets=("wikitext")
+# policies=("harmony")
 
-batch_size_deepspeed_exflow=32
+# datasets=("wikitext" "wmt19")
+# policies=("harmony")
+
+# originally 64
+batch_size_deepspeed_exflow=64
 batch_size_harmony_drop_even_split=64
 
 cd ..
@@ -35,21 +40,15 @@ do
                 --num_samples $num_samples \
                 --batch_size $batch_size \
                 --seq_len $seq_len \
-                --model_name "hugging-quants/Mixtral-8x7B-Instruct-v0.1-AWQ-INT4" \
-                --loader awq \
-                --d_model 4096 \
-                --num_experts 8 \
-                --type_moe_parent MixtralDecoderLayer \
-                --type_moe MixtralSparseMoeBlock \
-                --router_tensor_path gate \
-                --name_experts experts \
+                --model_name "google/switch-base-$num_experts" \
+                --num_experts $num_experts \
                 --scheduling_policy $policy \
                 --expert_cache_size $expert_cache_size \
-                --expert_placement "ExFlow/placement/8_gpu${world_size}.json" \
+                --expert_placement "ExFlow/placement/exp${num_experts}_gpu${world_size}.json" \
                 --world_size $world_size \
                 --eq_tokens $eq_tokens \
                 --expert_fetching_strategy "async-cpu" \
                 --warmup_rounds $warmup_len \
-                --pa "outputs/exp-mixtral-quant-policies-dataset/$datetime/$dataset/$policy"
+                --pa "outputs/exp-switch128-policies-dataset/$datetime/$dataset-$policy"
     done    
 done

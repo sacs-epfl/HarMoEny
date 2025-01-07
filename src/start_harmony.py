@@ -16,7 +16,7 @@ import logging
 from concurrent.futures import as_completed, ThreadPoolExecutor
 
 from torch.utils.data import DataLoader, DistributedSampler
-from transformers import AutoTokenizer, AutoModel
+from transformers import AutoTokenizer, AutoModel, AutoModelForCausalLM
 from awq import AutoAWQForCausalLM
 
 from flexible_dataset import FlexibleDataset
@@ -53,13 +53,26 @@ def setup(rank, timeout=timedelta(minutes=30)):
     )
 
 def generate_model(rank):
+    dtype = "auto"
+    if args.model_dtype:
+        if args.model_dtype == "float16":
+            dtype = torch.float16
+        elif args.model_dtype == "float":
+            dtype = torch.float
 
     if args.loader == "transformers":
-        model = AutoModel.from_pretrained(args.model_name)
+        model = AutoModel.from_pretrained(args.model_name, torch_dtype=dtype)
+        #model = AutoModelForCausalLM.from_pretrained(args.model_name, torch_dtype=dtype)
     elif args.loader == "awq":
-        model = AutoAWQForCausalLM.from_pretrained(args.model_name, torch_dtype=torch.float16, low_cpu_mem_usage=True)
+        model = AutoAWQForCausalLM.from_pretrained(args.model_name, torch_dtype=dtype, low_cpu_mem_usage=True)
     else:
         raise ValueError(f"{args.loader} is not a valid loader")
+    
+    if rank == 0:
+        print(model.layers[0].block_sparse_moe.experts[0].w1.weight.dtype)
+        print(model.layers[0].block_sparse_moe.experts[0].w2.weight.dtype)
+        print(model.layers[0].block_sparse_moe.experts[0].w3.weight.dtype)
+        print(model.layers[0].block_sparse_moe.gate.weight.dtype)
 
     config = MoEConfig(
         rank=rank,
@@ -177,6 +190,7 @@ def run_standard_experiment(model, loader):
         for batch in loader:
             batch = {k: v.cuda() for k, v in batch.items()}
             model(**batch)
+            #model.generate(batch, max_new_tokens=1)
             itr += 1
             if itr == args.warmup_rounds:
                 break
@@ -187,6 +201,7 @@ def run_standard_experiment(model, loader):
             start = time.time()
             batch = {k: v.cuda() for k, v in batch.items()}
             model(**batch)
+            #model.generate(batch, max_new_tokens=1)
             end = time.time()
             latencies.append(end - start)
         run_end = time.time()

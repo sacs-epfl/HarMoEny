@@ -24,16 +24,17 @@ RUN pip install \
     huggingface_hub==0.26.1 \
     datasets==3.0.2 \
     nvidia-ml-py3==7.352.0  \
-    transformers==4.46.0  \
-    deepspeed==0.15.3  \
-    vllm==0.6.5 \
-    deepspeed-mii==0.3.1
+    deepspeed==0.15.3 \
+    gekko==1.2.1 \
+    torchvision==0.20.1 
+    # transformers==4.46.0  \
+    # vllm==0.6.5 \
+    # deepspeed-mii==0.3.1
 
 RUN python3 -m pip install gurobipy==12.0.0
 
 RUN pip install -U kaleido==0.2.1
 RUN python3 -m pip install -v -U --no-build-isolation git+https://github.com/microsoft/tutel@c7559e8
-
 
 # Clone and install FastMoE
 RUN git clone https://github.com/laekov/fastmoe.git /workspace/fastmoe && \
@@ -43,7 +44,36 @@ RUN git clone https://github.com/laekov/fastmoe.git /workspace/fastmoe && \
     pip install .
 
 # Reinstall flash-attn
-RUN pip install flash_attn==2.7.2.post1 -U --force-reinstall
+#RUN pip install flash_attn==2.7.2.post1 -U --force-reinstall
+
+# RUN pip uninstall -y transformers 
+# RUN pip install git+https://github.com/huggingface/transformers.git@v4.37-release
+
+RUN pip uninstall -y flash_attn
+RUN git clone https://github.com/Dao-AILab/flash-attention /workspace/flash-attn && \
+    cd /workspace/flash-attn && \
+    git checkout f86e3dd && \
+    python setup.py install
+
+# Install AutoAWQ
+RUN git clone https://github.com/casper-hansen/AutoAWQ /workspace/autoawq && \
+    cd /workspace/autoawq && \
+    git checkout cbd6a75b065e94a3e530dfdbb8f3973f0d954ec0 && \
+    pip install .
+
+# Install AutoGPTQ
+RUN git clone https://github.com/AutoGPTQ/AutoGPTQ /workspace/autogptq && \
+    cd /workspace/autogptq && \
+    git checkout 323950b && \
+    python setup.py install
+  #  DISABLE_QIGEN=1 pip3 install .
+
+# Install Transformers
+# RUN pip uninstall -y transformers
+# RUN git clone https://github.com/huggingface/transformers /workspace/transformers && \
+#     cd /workspace/transformers && \
+#     git checkout 8e3e145 && \
+#     pip install .
 
 # Create Triton directory
 RUN mkdir -p /.triton/autotune

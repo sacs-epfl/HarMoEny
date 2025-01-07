@@ -49,6 +49,8 @@ def _replace_moe_layer(
                 experts = get_tensor_by_path(child, name_experts)
                 if isinstance(experts, nn.ModuleDict):
                     experts = list(experts.values())
+                elif isinstance(experts, nn.ModuleList):
+                    experts = list(experts)
 
                 pinned_experts = []
                 for expert in experts:

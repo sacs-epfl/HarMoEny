@@ -70,6 +70,9 @@ class Args:
         parser.add_argument(
             "--d_model", default=768, type=int, help="Dimension of model hidden states"
         )
+        parser.add_argument(
+            "--model_dtype", type=str, help="float or float16"
+        )
         parser.add_argument("--scheduling_policy", default="deepspeed", type=str)
         parser.add_argument("--cache_policy", default="RAND", type=str)
         parser.add_argument("--expert_cache_size", default=2, type=int)

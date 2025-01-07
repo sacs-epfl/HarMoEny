@@ -46,9 +46,10 @@ def main():
     print(f"Paths: {paths}")
 
     # Load and process data
-    dataframe = load_data(paths, variables)
+    df = load_data(paths, variables)
     print("Combined DataFrame:")
-    print(dataframe)
+    print(df)
+    df.to_csv("../data_processed/throughput.csv")
 
 if __name__ == "__main__":
     main()

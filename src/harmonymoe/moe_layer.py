@@ -146,6 +146,9 @@ class MoELayer(nn.Module):
 
     @torch.no_grad()
     def forward(self, hidden_states):
+        # if self.config.rank == 0:
+        #     print(hidden_states.dtype)
+
         self.start_pass.record()
 
         original_shape = hidden_states.shape
@@ -156,8 +159,14 @@ class MoELayer(nn.Module):
         # Entry will be a 1 on which expert to work on for the specific token
         # at specific sequence index on specific sample, rest will be 0
 
+        # if self.config.rank == 0:
+        #     print(router_mask.dtype)
+
         expert_index = torch.argmax(router_mask, dim=-1)
         router_mask = router_mask.bool()
+
+        # if self.config.rank == 0:
+        #     print(router_mask.dtype)
 
         expert_indices = [
             router_mask[:, j].nonzero(as_tuple=True) for j in range(self.num_experts)
@@ -193,7 +202,11 @@ class MoELayer(nn.Module):
         tokens_send, send_splits = self.scheduler.distribute_tokens(
             schedule_list, hidden_states, expert_indices, num_toks_send
         )
-        tokens_recv, recv_splits = self.scheduler.allocate_recv_tensors(schedule)
+        # if self.config.rank == 0:
+        #     print(tokens_send.dtype)
+        tokens_recv, recv_splits = self.scheduler.allocate_recv_tensors(schedule, dtype=hidden_states.dtype)
+        # if self.config.rank == 0:
+        #     print(tokens_recv.dtype)
         total_tokens = tokens_recv.shape[0]
         self.tot_num_toks_recv.append(total_tokens)
 

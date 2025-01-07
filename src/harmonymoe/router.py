@@ -8,6 +8,7 @@ class RouterConfig:
     d_model: int
     num_experts: int
     weights: any
+    model_dtype: str = None
     enable_skew: bool = False
     enable_random: bool = False
     enable_uniform: bool = False
@@ -35,7 +36,6 @@ class Router(nn.Module):
             self.router = nn.Linear(
                 self.config.d_model, self.config.num_experts, bias=False, dtype=self.config.weights.dtype
             )
-            print("Loading weights")
             with torch.no_grad():
                 self.router.weight.copy_(self.config.weights)
 

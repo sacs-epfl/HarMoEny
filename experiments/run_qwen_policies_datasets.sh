@@ -1,27 +1,19 @@
 datetime=$(date +"%Y-%m-%d_%H-%M")
 
-num_samples=15360
+num_samples=1920
 seq_len=1024
-world_size=8
-expert_cache_size=16
-num_experts=128
+world_size=6
+expert_cache_size=10
 expert_fetching_strategy="async-cpu"
-eq_tokens=128
+eq_tokens=1024 # will prob need updating
 warmup_len=3
 
-
-policies=("deepspeed" "harmony" "drop" "even_split" "exflow")
+# exflow will need to be rerun for this model exflow removed temporarily
+policies=("deepspeed" "harmony" "even_split" "drop")
 datasets=("wmt19" "bookcorpus" "wikitext" "random")
 
-# datasets=("wikitext")
-# policies=("harmony")
-
-# datasets=("wikitext" "wmt19")
-# policies=("harmony")
-
-# originally 64
-batch_size_deepspeed_exflow=64
-batch_size_harmony_drop_even_split=64
+batch_size_deepspeed_exflow=16
+batch_size_harmony_drop_even_split=32
 
 cd ..
 for dataset_index in "${!datasets[@]}"
@@ -40,15 +32,21 @@ do
                 --num_samples $num_samples \
                 --batch_size $batch_size \
                 --seq_len $seq_len \
-                --model_name "google/switch-base-$num_experts" \
-                --num_experts $num_experts \
+                --model_name "Qwen/Qwen1.5-MoE-A2.7B-Chat" \
+                --loader transformers \
+                --d_model 2048 \
+                --num_experts 60 \
+                --type_moe_parent Qwen2MoeDecoderLayer \
+                --type_moe Qwen2MoeSparseMoeBlock \
+                --router_tensor_path gate \
+                --name_experts experts \
                 --scheduling_policy $policy \
                 --expert_cache_size $expert_cache_size \
-                --expert_placement "ExFlow/placement/exp${num_experts}_gpu${world_size}.json" \
+                --expert_placement "ExFlow/placement/8_gpu${world_size}.json" \
                 --world_size $world_size \
                 --eq_tokens $eq_tokens \
                 --expert_fetching_strategy "async-cpu" \
                 --warmup_rounds $warmup_len \
-                --pa "outputs/exp-policies-dataset/$datetime/$dataset/$policy"
+                --pa "outputs/exp-qwen-policies-dataset/$datetime/$dataset-$policy"
     done    
 done

@@ -20,21 +20,21 @@ class AsynchronousCPU:
 
 
     def load_expert_into_slot(self, expert_idx, slot_idx):
-        # with nvtx.annotate(
-        #     f"Loading expert {expert_idx} into slot {slot_idx}", color="green"
-        # ):
-        with torch.no_grad():
-            with torch.cuda.stream(self.load_stream):
-                self.load_stream.wait_event(self.slot_ready_events[slot_idx])
+        with nvtx.annotate(
+            f"Loading expert {expert_idx} into slot {slot_idx}", color="green"
+        ):
+            with torch.no_grad():
+                with torch.cuda.stream(self.load_stream):
+                    self.load_stream.wait_event(self.slot_ready_events[slot_idx])
 
-                pinned_state_dict = self.config.experts[expert_idx]#.state_dict()
+                    pinned_state_dict = self.config.experts[expert_idx]
 
-                cached_expert = self.config.cached_experts[slot_idx]
-                for name, param in cached_expert.named_parameters():
-                    cpu_param = pinned_state_dict[name]
-                    param.copy_(cpu_param, non_blocking=True)
+                    cached_expert = self.config.cached_experts[slot_idx]
+                    for name, param in cached_expert.named_parameters():
+                        cpu_param = pinned_state_dict[name]
+                        param.copy_(cpu_param, non_blocking=True)
 
-                self.expert_loaded[expert_idx].record(stream=self.load_stream)
+                    self.expert_loaded[expert_idx].record(stream=self.load_stream)
 
     def loaded_not_loaded_ordered(self, expert_mask):
         loaded = []
@@ -114,21 +114,21 @@ class AsynchronousCPU:
         for idx, expert_idx in enumerate(expert_order):
             slot_idx = slot_idxs[idx]
 
-            # with nvtx.annotate(
-            #     f"Executing expert {expert_idx} on slot {slot_idx}", color="blue"
-            # ):
-            with torch.cuda.stream(self.comp_stream):
-                if expert_idx != self.local_cache[slot_idx]:
-                    self.comp_stream.wait_event(
-                        self.expert_loaded[expert_idx]
-                    )
+            with nvtx.annotate(
+                f"Executing expert {expert_idx} on slot {slot_idx}", color="blue"
+            ):
+                with torch.cuda.stream(self.comp_stream):
+                    if expert_idx != self.local_cache[slot_idx]:
+                        self.comp_stream.wait_event(
+                            self.expert_loaded[expert_idx]
+                        )
 
-                # Execute the expert on the tokens
-                tokens[expert_mask[expert_idx]] = self.config.cached_experts[
-                    slot_idx
-                ](tokens[expert_mask[expert_idx]])
+                    # Execute the expert on the tokens
+                    tokens[expert_mask[expert_idx]] = self.config.cached_experts[
+                        slot_idx
+                    ](tokens[expert_mask[expert_idx]])
 
-                self.slot_ready_events[slot_idx].record(stream=self.comp_stream)
+                    self.slot_ready_events[slot_idx].record(stream=self.comp_stream)
 
             if next_load_idx < len(need_loading):  # Will need to load
                 self.load_expert_into_slot(need_loading[next_load_idx], slot_idx)

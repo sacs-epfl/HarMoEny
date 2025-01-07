@@ -11,11 +11,13 @@ path = sys.argv[1]
 with open(os.path.join(path, "data.json")) as f:
     meta = json.load(f)
 
-num_layers = 12
+
 num_gpus = meta["world_size"]
 batch_size = meta["batch_size"]
 seq_len = meta["seq_len"]
-num_layers_encoder = 6
+# SWITCH (12, 6), # Mixtral (32, 32)
+num_layers = 32
+num_layers_full_seq = 32
 num_toks_per_batch_encoder = batch_size * seq_len * num_gpus
 num_toks_per_batch_decoder = batch_size * num_gpus
 
@@ -30,14 +32,17 @@ def verify_num_toks_processed():
             else:
                 df["total number of tokens recv"] += _df["total number of tokens recv"]
         df = df.iloc[:-1]
-        comparison = num_toks_per_batch_encoder if layer_idx < num_layers_encoder else num_toks_per_batch_decoder
-        all_correct = (df["total number of tokens recv"] == comparison).all()
-        if not all_correct:
-            print(f"TOKENS LOST ISSUE: layer {layer_idx}")
+        comparison = num_toks_per_batch_encoder if layer_idx < num_layers_full_seq else num_toks_per_batch_decoder
+        print(f"Layer {layer_idx} expected {comparison}")
+        mismatches = df[df["total number of tokens recv"] != comparison]
+        if not mismatches.empty:
+            print(f"TOKENS LOST ISSUE: layer {layer_idx}. Expect {comparison}")
+            print("Mismatched values:")
+            print(mismatches)
 
 def get_imbalance():
     df = None
-    for layer_idx in range(num_layers_encoder):
+    for layer_idx in range(num_layers_full_seq):
         _df = None
         for gpu_idx in range(num_gpus):
             __df = pd.read_csv(os.path.join(path, f"{gpu_idx}/moe_layer-{layer_idx}.csv"), index_col=0)

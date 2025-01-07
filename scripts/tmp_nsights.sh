@@ -1,17 +1,14 @@
 datetime=$(date +"%Y-%m-%d_%H-%M")
 
-num_samples=2560
+num_samples=256
 seq_len=1024
 world_size=4
 expert_cache_size=2
 expert_fetching_strategy="async-cpu"
 eq_tokens=1024 # will prob need updating
-warmup_len=3
+warmup_len=0
 
 # exflow will need to be rerun for this model exflow removed temporarily
-policies=("even_split" "harmony" "deepspeed" "drop")
-datasets=("wmt19" "bookcorpus" "wikitext" "random")
-
 policies=("even_split")
 datasets=("random")
 
@@ -30,7 +27,7 @@ do
             batch_size=$batch_size_deepspeed_exflow
         fi
 
-        python3 src/start_harmony.py \
+        nsys profile --trace=cuda,osrt,nvtx --force-overwrite=true --output="$dataset-$policy" python3 src/start_harmony.py \
                 --dataset $dataset \
                 --num_samples $num_samples \
                 --batch_size $batch_size \
@@ -50,6 +47,6 @@ do
                 --eq_tokens $eq_tokens \
                 --expert_fetching_strategy "async-cpu" \
                 --warmup_rounds $warmup_len \
-                --pa "outputs/exp-mixtral-quant-policies-dataset/$datetime/$dataset/$policy"
+                --pa "outputs/garbage/$datetime/$dataset-$policy"
     done    
 done
