@@ -14,13 +14,14 @@ if len(sys.argv) < 3:
 
 routing_array = np.load(sys.argv[1]) # [num_tokens, num_MOE_layers], expert id for each token at each layer
 num_tokens, _ = routing_array.shape
-print(num_tokens)
+print(f"Num toks: {num_tokens}")
 num_layer = routing_array.shape[1]
-print(num_layer)
+print(f"Num layers: {num_layer}")
 num_expert_per_layer = int(sys.argv[2])
 total_experts = num_expert_per_layer * num_layer
 assert total_experts % 2 == 0
 intra_gpus = int(sys.argv[3])
+print(f"Intra GPUs: {intra_gpus}")
 nodes = 1
 use_bipart = True
 incremental_amount = 5000

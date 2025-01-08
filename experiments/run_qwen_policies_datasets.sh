@@ -9,7 +9,8 @@ eq_tokens=1024 # will prob need updating
 warmup_len=3
 
 # exflow will need to be rerun for this model exflow removed temporarily
-policies=("deepspeed" "harmony" "even_split" "drop")
+policies=("deepspeed" "harmony" "even_split" "drop" "exflow")
+policies=("exflow")
 datasets=("wmt19" "bookcorpus" "wikitext" "random")
 
 batch_size_deepspeed_exflow=16
@@ -42,7 +43,7 @@ do
                 --name_experts experts \
                 --scheduling_policy $policy \
                 --expert_cache_size $expert_cache_size \
-                --expert_placement "ExFlow/placement/8_gpu${world_size}.json" \
+                --expert_placement "ExFlow/placement/qwen-gpu$world_size.json" \
                 --world_size $world_size \
                 --eq_tokens $eq_tokens \
                 --expert_fetching_strategy "async-cpu" \

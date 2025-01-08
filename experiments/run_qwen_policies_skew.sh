@@ -14,15 +14,13 @@ enable_random=False
 enable_uniform=False
 
 # exflow will need to be rerun for this model exflow removed temporarily
-policies=("deepspeed" "harmony" "even_split" "drop")
+policies=("deepspeed" "harmony" "even_split" "drop" "exflow")
+policies=("exflow")
 skews=(0.0 0.5 0.9)
 
 
 batch_size_deepspeed_exflow=(32 8 4)
 batch_size_harmony_drop_even_split=32
-
-skews=(0.5 0.9)
-batch_size_deepspeed_exflow=(8 4)
 
 cd ..
 for skew_index in "${!skews[@]}"
@@ -51,7 +49,7 @@ do
                 --name_experts experts \
                 --scheduling_policy $policy \
                 --expert_cache_size $expert_cache_size \
-                --expert_placement "ExFlow/placement/8_gpu${world_size}.json" \
+                --expert_placement "ExFlow/placement/qwen-gpu$world_size.json" \
                 --world_size $world_size \
                 --eq_tokens $eq_tokens \
                 --expert_fetching_strategy "async-cpu" \

@@ -5,6 +5,7 @@ class SynchronousCPU:
     def __init__(self, config):
         self.config = config
         self.load_finished = torch.cuda.Event(enable_timing=False)
+        self.end_event = torch.cuda.Event(enable_timing=False)
 
     def load_expert_into_slot_synchronously(self, expert_idx, slot_idx):
         with nvtx.annotate(
@@ -53,5 +54,7 @@ class SynchronousCPU:
             self.load_expert_into_slot_synchronously(
                 self.config.cache[self.config.rank][0], 0
             )
+        self.end_event.record()
+        self.end_event.synchronize()
 
         return tokens

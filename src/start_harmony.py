@@ -62,17 +62,10 @@ def generate_model(rank):
 
     if args.loader == "transformers":
         model = AutoModel.from_pretrained(args.model_name, torch_dtype=dtype)
-        #model = AutoModelForCausalLM.from_pretrained(args.model_name, torch_dtype=dtype)
     elif args.loader == "awq":
         model = AutoAWQForCausalLM.from_pretrained(args.model_name, torch_dtype=dtype, low_cpu_mem_usage=True)
     else:
         raise ValueError(f"{args.loader} is not a valid loader")
-    
-    if rank == 0:
-        print(model.layers[0].block_sparse_moe.experts[0].w1.weight.dtype)
-        print(model.layers[0].block_sparse_moe.experts[0].w2.weight.dtype)
-        print(model.layers[0].block_sparse_moe.experts[0].w3.weight.dtype)
-        print(model.layers[0].block_sparse_moe.gate.weight.dtype)
 
     config = MoEConfig(
         rank=rank,
@@ -190,7 +183,6 @@ def run_standard_experiment(model, loader):
         for batch in loader:
             batch = {k: v.cuda() for k, v in batch.items()}
             model(**batch)
-            #model.generate(batch, max_new_tokens=1)
             itr += 1
             if itr == args.warmup_rounds:
                 break
@@ -201,7 +193,6 @@ def run_standard_experiment(model, loader):
             start = time.time()
             batch = {k: v.cuda() for k, v in batch.items()}
             model(**batch)
-            #model.generate(batch, max_new_tokens=1)
             end = time.time()
             latencies.append(end - start)
         run_end = time.time()

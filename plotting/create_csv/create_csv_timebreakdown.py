@@ -32,6 +32,6 @@ for i in range(num_layers):
     columns.insert(0, "layer")
     _df = _df[columns]
 
-    df = pd.concat((df, _df))
+    df = pd.concat((df, _df), ignore_index=True)
 
 save_pd(df, f"../data_processed/timebreakdown/{path.split('/')[-1]}.csv")

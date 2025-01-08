@@ -17,7 +17,7 @@ if path[-1] == "/":
 with open(f"{path}/data.json", "r") as f:
     meta = json.load(f)
 
-num_layers = 6 
+num_layers = 24
 num_ranks = meta["world_size"]
 num_experts = meta["num_experts"]
 num_tokens = meta["seq_len"] * meta["batch_size"] * num_ranks
@@ -33,6 +33,7 @@ for i in range(num_layers):
                 token_layer_freq[t][i] = e
                 t += 1
 
+print(token_layer_freq)
 np.save(f"trace/{os.path.splitext(os.path.basename(path))[0]}.npy", token_layer_freq)
 
 # Verify
