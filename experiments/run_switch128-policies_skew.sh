@@ -41,7 +41,7 @@ do
                 --num_experts $num_experts \
                 --scheduling_policy $policy \
                 --expert_cache_size $expert_cache_size \
-                --expert_placement "ExFlow/placement/exp${num_experts}_gpu${world_size}.json" \
+                --expert_placement "ExFlow/placement/switch-exp${num_experts}-gpu${world_size}.json" \
                 --world_size $world_size \
                 --eq_tokens $eq_tokens \
                 --expert_fetching_strategy "async-cpu" \

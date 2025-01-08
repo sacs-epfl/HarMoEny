@@ -3,19 +3,24 @@ import numpy as np
 import ast
 import sys 
 import json 
+import os 
 
 if len(sys.argv) < 2:
     print("Please provide root path to conversion request")
     exit(0)
 
 path = sys.argv[1]
+
+if path[-1] == "/":
+    path = path[:-1]
+
 with open(f"{path}/data.json", "r") as f:
     meta = json.load(f)
 
 num_layers = 6 
 num_ranks = meta["world_size"]
-num_experts = int(meta["model_name"].split("-")[-1])
-num_tokens = 5100 * num_ranks
+num_experts = meta["num_experts"]
+num_tokens = meta["seq_len"] * meta["batch_size"] * num_ranks
 
 token_layer_freq = np.zeros((num_tokens, num_layers), dtype=int)
 for i in range(num_layers):
@@ -28,7 +33,7 @@ for i in range(num_layers):
                 token_layer_freq[t][i] = e
                 t += 1
 
-np.save(f"trace/{num_experts}.npy", token_layer_freq)
+np.save(f"trace/{os.path.splitext(os.path.basename(path))[0]}.npy", token_layer_freq)
 
 # Verify
 for j in range(num_layers):

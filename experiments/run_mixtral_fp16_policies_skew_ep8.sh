@@ -3,7 +3,7 @@ datetime=$(date +"%Y-%m-%d_%H-%M")
 num_samples=640
 seq_len=1024
 world_size=8
-expert_cache_size=2
+expert_cache_size=1
 expert_fetching_strategy="async-cpu"
 eq_tokens=4096 # will prob need updating
 warmup_len=3
@@ -18,7 +18,7 @@ policies=("harmony" "deepspeed" "even_split" "drop")
 skews=(0.9 0.5 0.0)
 
 batch_size_deepspeed_exflow=(8 4 1)
-batch_size_harmony_drop_even_split=16
+batch_size_harmony_drop_even_split=8
 
 cd ..
 for skew_index in "${!skews[@]}"

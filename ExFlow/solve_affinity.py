@@ -6,9 +6,10 @@ import math
 from copy import deepcopy
 import os
 import sys
+import time
 
 if len(sys.argv) < 3:
-    print("Please provide path to .npy and number of experts")
+    print("Please provide path to .npy, number of experts, and number of gpus")
     exit(1)
 
 routing_array = np.load(sys.argv[1]) # [num_tokens, num_MOE_layers], expert id for each token at each layer
@@ -19,7 +20,7 @@ print(num_layer)
 num_expert_per_layer = int(sys.argv[2])
 total_experts = num_expert_per_layer * num_layer
 assert total_experts % 2 == 0
-intra_gpus = 2
+intra_gpus = int(sys.argv[3])
 nodes = 1
 use_bipart = True
 incremental_amount = 5000
@@ -284,5 +285,7 @@ def read_parition(total_number_gpu, use_bipart=False):
     print(avg_cost, avg_intra, avg_inter)
 
 
-
+start_time = time.time()
 read_parition(intra_gpus * nodes, use_bipart)
+end_time = time.time()
+print(f"Duration: {end_time-start_time}s")

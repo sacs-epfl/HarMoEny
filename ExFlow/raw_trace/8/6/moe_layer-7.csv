@@ -1,3 +1,0 @@
-iteration,total number of tokens sent,total number of tokens recv,latency (ms),comp latency (ms),expert distribution
-0,85,680,9.184255599975586,0.8048639893531799,"[0, 0, 0, 0, 0, 0, 85, 0]"
-1,85,680,9.128959655761719,0.7106559872627258,"[0, 0, 0, 0, 0, 0, 85, 0]"

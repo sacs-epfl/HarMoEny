@@ -1,5 +1,6 @@
 data
-outputs
+outputs/*
+licenses/*
 plots
 *.pth
 *__pycache__

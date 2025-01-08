@@ -9,7 +9,7 @@ docker run -it \
     --ipc=host \
     -v .:/workspace \
     -v $CACHE_PATH:/cache \
-    -v ~/licenses/gurobi.lic:/opt/gurobi/gurobi.lic:ro \
+    -v ./licenses/gurobi.lic:/opt/gurobi/gurobi.lic:ro \
     -e HF_HOME=/cache \
     moe:latest \
     /bin/bash
