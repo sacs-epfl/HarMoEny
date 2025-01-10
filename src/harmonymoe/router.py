@@ -26,18 +26,21 @@ class Router(nn.Module):
             self.config.skew = self.config.skew / 100
 
         if config.enable_skew:
-            self.forward = self.skew_forward
+            self.forward_exec = self.skew_forward
         elif config.enable_random:
-            self.forward = self.random_forward
+            self.forward_exec = self.random_forward
         elif config.enable_uniform:
-            self.forward = self.uniform_forward
+            self.forward_exec = self.uniform_forward
         else:
-            self.forward = self.standard_forward
+            self.forward_exec = self.standard_forward
             self.router = nn.Linear(
                 self.config.d_model, self.config.num_experts, bias=False, dtype=self.config.weights.dtype
             )
             with torch.no_grad():
                 self.router.weight.copy_(self.config.weights)
+    
+    def forward(self, x):
+        return self.forward_exec(x)
 
     def standard_forward(self, x):
         logits = self.router(x)

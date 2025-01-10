@@ -18,7 +18,7 @@ policies=("deepspeed" "harmony" "drop" "even_split" "exflow")
 policies=("harmony")
 
 batch_size_harmony_drop_even_split=64
-batch_size_deepspeed_exflow=(64 32 18 14)
+batch_size_deepspeed_exflow=(64 32 18)
 
 cd ..
 for skew_index in "${!skews[@]}"

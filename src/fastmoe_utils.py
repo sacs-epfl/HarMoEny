@@ -8,12 +8,12 @@ from router import Router
 from utils import TimedModule
 
 class ExpertWrapper(nn.Module):
-        def __init__(self, child):
-            super().__init__()
-            self.child = child
-        
-        def forward(self, x, _):
-            return self.child(x)
+    def __init__(self, child):
+        super().__init__()
+        self.child = child
+    
+    def forward(self, x, _):
+        return self.child(x)
     
 class SwitchFMoEWrapper(nn.Module):
     def __init__(self, child):

@@ -71,7 +71,7 @@ class Args:
             "--d_model", default=768, type=int, help="Dimension of model hidden states"
         )
         parser.add_argument(
-            "--model_dtype", type=str, help="float or float16"
+            "--model_dtype", type=str, help="float, float16, or int8"
         )
         parser.add_argument("--scheduling_policy", default="deepspeed", type=str)
         parser.add_argument("--cache_policy", default="RAND", type=str)

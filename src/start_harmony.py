@@ -16,7 +16,7 @@ import logging
 from concurrent.futures import as_completed, ThreadPoolExecutor
 
 from torch.utils.data import DataLoader, DistributedSampler
-from transformers import AutoTokenizer, AutoModel, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModel, AutoModelForCausalLM, BitsAndBytesConfig
 from awq import AutoAWQForCausalLM
 
 from flexible_dataset import FlexibleDataset
@@ -59,13 +59,16 @@ def generate_model(rank):
             dtype = torch.float16
         elif args.model_dtype == "float":
             dtype = torch.float
-
-    if args.loader == "transformers":
-        model = AutoModel.from_pretrained(args.model_name, torch_dtype=dtype)
-    elif args.loader == "awq":
-        model = AutoAWQForCausalLM.from_pretrained(args.model_name, torch_dtype=dtype, low_cpu_mem_usage=True)
+    if args.model_dtype == "int8" and args.loader == "transformers":
+        quantization_config = BitsAndBytesConfig(load_in_8bit=True)
+        model = AutoModel.from_pretrained(args.model_name, quantization_config=quantization_config, device_map={"": "cpu"})
     else:
-        raise ValueError(f"{args.loader} is not a valid loader")
+        if args.loader == "transformers":
+            model = AutoModel.from_pretrained(args.model_name, torch_dtype=dtype)
+        elif args.loader == "awq":
+            model = AutoAWQForCausalLM.from_pretrained(args.model_name, torch_dtype=dtype, low_cpu_mem_usage=True)
+        else:
+            raise ValueError(f"{args.loader} is not a valid loader")
 
     config = MoEConfig(
         rank=rank,
@@ -165,6 +168,7 @@ def run_inference_workload(rank):
 
         if rank == 0:
             run_info = vars(args).copy()
+            run_info["system_name"] = "exflow" if args.scheduling_policy == "exflow" else "harmony"
             with open(f"{args.path}/data.json", "w") as f:
                 json.dump({"start": run_start, "end": run_end, **run_info}, f, indent=4)
 
