@@ -5,8 +5,8 @@ from utils import save_pd
 if len(sys.argv) < 2:
     print("Please provide path to do breakdown")
 
-num_layers = 12
-num_gpus = 8
+num_layers = 24
+num_gpus = 6
 path = sys.argv[1]
 df = pd.DataFrame()
 for i in range(num_layers):

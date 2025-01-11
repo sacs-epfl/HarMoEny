@@ -12,6 +12,7 @@ skews=(0.0 0.5 0.9)
 
 fastmoe_batches=(64 32 16)
 fastermoe_batches=(64 32 16)
+deepspeed_batches=(64 32 16)
 
 cd ..
 for skew in "${skews[@]}"
@@ -43,4 +44,15 @@ do
         --router_skew $skew \
         --router_num_experts_skewed $num_experts_skewed \
         --pa "outputs/exp-switch128-systems-skew/$datetime/$skew-fastermoe"
+    
+    deepspeed --num_gpus $world_size src/start_deepspeed.py \
+        --dataset ${datasets[i]} \
+        --num_samples $num_samples \
+        --batch_size ${deepspeed_batches[i]} \
+        --seq_len $seq_len \
+        --model_name "google/switch-base-$num_experts" \
+        --num_experts $num_experts \
+        --world_size $world_size \
+        --capacity_factor ${deepspeed_capacity_factors[i]} \
+        --pa $output_path/${datasets[i]}/deepspeed
 done

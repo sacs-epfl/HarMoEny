@@ -1,0 +1,17 @@
+,system_name,dataset,throughput (toks/s)
+0,exflow,bookcorpus,163.19311503561028
+1,fastermoe,bookcorpus,201.89434463865283
+2,fastmoe,bookcorpus,202.273976555775
+3,harmony,bookcorpus,206.5530317637603
+4,exflow,random,141.32051535567618
+5,fastermoe,random,186.55304112630853
+6,fastmoe,random,186.81545299086292
+7,harmony,random,201.47807391949536
+8,exflow,wikitext,167.11193295674997
+9,fastermoe,wikitext,187.57917368857218
+10,fastmoe,wikitext,187.6092923524541
+11,harmony,wikitext,201.21882297126953
+12,exflow,wmt19,175.55198437122286
+13,fastermoe,wmt19,199.40900644715816
+14,fastmoe,wmt19,200.18334864930162
+15,harmony,wmt19,203.91598213942572

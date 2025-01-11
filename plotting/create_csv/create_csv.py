@@ -50,6 +50,7 @@ def load_data(args):
                 row[var] = meta[var]
             _df = pd.read_csv(os.path.join(path, "0/e2e.csv"), index_col=0)
             row["throughput (toks/s)"] = meta["num_samples"] / _df.sum(axis=0)["latency (s)"]
+            # There is no std div for throughput
             df.append(row)
         elif args.metric == "mttft":
             row = {}

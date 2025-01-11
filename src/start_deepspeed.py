@@ -3,8 +3,10 @@
 
 import torch
 import torch.nn as nn
+from torch import Tensor
 import pynvml
 import psutil
+import torch.distributed as dist
 import torch.multiprocessing as mp 
 from threading import Thread
 import sys
@@ -27,7 +29,7 @@ from transformers.models.switch_transformers.modeling_switch_transformers import
 from router import Router
 
 import deepspeed
-from deepspeed.moe.sharded_moe import top1gating, top2gating, topkgating
+from deepspeed.moe.sharded_moe import top2gating, topkgating
 from deepspeed.utils.timer import SynchronizedWallClockTimer
 from typing import Callable, Dict, TYPE_CHECKING, Any, Optional, Tuple, Union
 
@@ -36,6 +38,39 @@ def str2bool(s):
 
 parser = argparse.ArgumentParser(
     prog="Run inference on DeepSpeed-MoE inference engine",
+)
+parser.add_argument(
+    "--model_name",
+    default="google/switch-base-64",
+    type=str,
+    help="Huggingface model",
+)
+parser.add_argument(
+    "--d_model", default=768, type=int, help="Dimension of model hidden states"
+)
+parser.add_argument(
+    "--type_moe_parent",
+    default="SwitchTransformersLayerFF",
+    type=str,
+    help="class name of model MoE Layer parent",
+)
+parser.add_argument(
+    "--type_moe",
+    default="SwitchTransformersSparseMLP",
+    type=str,
+    help="class name of model MoE Layers",
+)
+parser.add_argument(
+    "--router_tensor_path",
+    default="router.classifier",
+    type=str,
+    help="path from MoE layer to router's tensor",
+)
+parser.add_argument(
+    "--name_experts",
+    default="experts",
+    type=str,
+    help="parameter name of router on MoE",
 )
 parser.add_argument("--dataset", default="sst2", type=str)
 parser.add_argument("--num_samples", default=0, type=int, help="Number of total samples across all GPUs")
@@ -70,8 +105,7 @@ def setup():
 def run_inference_workload():
     setup()
 
-    model_name = f"google/switch-base-{args.num_experts}"
-    model = AutoModel.from_pretrained(model_name, cache_dir="/cache")
+    model = AutoModel.from_pretrained(args.model_name, cache_dir="/cache")
 
     class MLPWrapper(nn.Module):
         def __init__(self, child):
@@ -156,7 +190,7 @@ def run_inference_workload():
            
 
             if self.k == 1:
-                gate_output = top1gating(logits, self.capacity_factor if self.training else self.eval_capacity_factor,
+                gate_output = TopKGate.top1gating(logits, self.capacity_factor if self.training else self.eval_capacity_factor,
                                         self.min_capacity, used_token, self.noisy_gate_policy if self.training else None,
                                         self.drop_tokens, self.use_rts, self.ep_group, use_tutel)
 
@@ -173,44 +207,172 @@ def run_inference_workload():
                 self.gate_time = self.timers(TOPK_GATE_TIMER).elapsed(reset=False)
 
             return gate_output
+        
+        def top1gating(logits: Tensor,
+               capacity_factor: float,
+               min_capacity: int,
+               used_token: Tensor = None,
+               noisy_gate_policy: Optional[str] = None,
+               drop_tokens: bool = True,
+               use_rts: bool = True,
+               ep_group: Union[torch.distributed.ProcessGroup, None] = None,
+               use_tutel: bool = False) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+            """Implements Top1Gating on logits."""
+            if noisy_gate_policy == 'RSample':
+                logits_w_noise = logits + gumbel_rsample(logits.shape, device=logits.device)
+            # everything is in fp32 in this function
 
+            gates = F.softmax(logits, dim=1)
+            capacity = _capacity(gates, torch.tensor(capacity_factor), torch.tensor(min_capacity))
+
+            # Create a mask for 1st's expert per token
+            # noisy gating
+            indices1_s = torch.argmax(logits_w_noise if noisy_gate_policy == 'RSample' else gates, dim=1)
+            num_experts = int(gates.shape[1])
+            mask1 = F.one_hot(indices1_s, num_classes=num_experts)
+
+            # mask only used tokens
+            if used_token is not None:
+                mask1 = einsum("s,se->se", used_token, mask1)
+
+            # gating decisions
+            exp_counts = torch.sum(mask1, dim=0).detach().to(logits.device)
+
+            # if we don't want to drop any tokens
+            if not drop_tokens:
+                new_capacity = torch.max(exp_counts).to(logits.device)
+                # Communicate across expert processes to pick the maximum capacity.
+                if ep_group is not None:
+                    print("Here WOAH")
+                    dist.all_reduce(new_capacity, op=dist.ReduceOp.MAX, group=ep_group)
+                if groups._get_expert_model_parallel_world_size() == 1:
+                    # If the non-expert is tensor-parallel, we need to pad the capacity to 'tp'.
+                    # This is since we are going to activate drop_tokens() to drop duplicate tokens.
+                    tp = 1 if groups.mpu is None else bwc_tensor_model_parallel_world_size(mpu=groups.mpu)
+                    new_capacity = torch.ceil(new_capacity / tp).mul(tp).to(new_capacity.dtype)
+                # Make sure the capacity value does not exceed the number of tokens.
+                capacity = min(new_capacity, torch.tensor(mask1.size(0)).to(new_capacity.device))
+
+            # Compute l_aux
+            me = torch.mean(gates, dim=0)
+            ce = torch.mean(mask1.float(), dim=0)
+            l_aux = torch.sum(me * ce) * num_experts
+
+            # Random Token Selection
+            if use_rts:
+                uniform = exp_selection_uniform_map.get(logits.device)
+                if uniform is None:
+                    uniform = torch.distributions.uniform.Uniform(low=torch.tensor(0.0, device=logits.device),
+                                                                high=torch.tensor(1.0, device=logits.device)).rsample
+                    exp_selection_uniform_map[logits.device] = uniform
+
+                mask1_rand = mask1 * uniform(mask1.shape)
+            else:
+                mask1_rand = mask1
+
+            assert logits.shape[
+                0] >= min_capacity, "No. of tokens (batch-size) should be greater than min_capacity. Either set min_capacity to 0 or increase your batch size."
+
+            top_idx = _top_idx(mask1_rand, capacity)
+
+            new_mask1 = mask1 * torch.zeros_like(mask1).scatter_(0, top_idx, 1)
+            mask1 = new_mask1
+
+            if use_tutel:
+                # Tutel doesn't support index values masked with zero
+                # so we need to replace masked indices with -1
+                indices_mask = mask1.sum(dim=1) * num_experts - 1
+                indices1_s = torch.min(indices1_s, indices_mask)
+
+            # Compute locations in capacity buffer
+            if use_tutel:
+                locations1 = tutel_moe.fast_cumsum_sub_one(mask1)
+            else:
+                locations1 = torch.cumsum(mask1, dim=0) - 1
+
+            if use_tutel:
+                gates1_s = (gates * mask1).sum(dim=1)
+                locations1_s = torch.sum(locations1 * mask1, dim=1)
+                return l_aux, capacity, num_experts, [
+                    indices1_s,
+                ], [
+                    locations1_s,
+                ], [
+                    gates1_s,
+                ], exp_counts
+
+            # Store the capacity location for each token
+            locations1_s = torch.sum(locations1 * mask1, dim=1)
+
+            # Normalize gate probabilities
+            mask1_float = mask1.float()
+            gates = gates * mask1_float
+
+            locations1_sc = _one_hot_to_float(locations1_s, capacity)
+            combine_weights = einsum("se,sc->sec", gates, locations1_sc)
+
+            dispatch_mask = combine_weights.bool()
+
+            return l_aux, combine_weights, dispatch_mask, exp_counts
+
+    def get_tensor_by_path(module, path):
+        parts = path.split(".")
+        current = module
+        for part in parts:
+            current = getattr(current, part)
+        return current
 
     # Update to add DeepspeedMoE to it
     def add_deepspeed_moe_model(module, idx):
-        if type(module).__name__ == "SwitchTransformersLayerFF":
+        if type(module).__name__ == args.type_moe_parent:
             for child_name, child in module.named_children():
-                if type(child).__name__ == "SwitchTransformersSparseMLP":
-                    router = getattr(child, "router")
-                    experts = getattr(child, "experts")
-                    if type(experts) == nn.ModuleDict:
+                if type(child).__name__ == args.type_moe:
+                    router = get_tensor_by_path(child, args.router_tensor_path)
+                    experts = get_tensor_by_path(child, args.name_experts)
+                    if isinstance(experts, nn.ModuleDict):
                         experts = list(experts.values())
+                    else:
+                        experts = list(experts)
                     
                     num_experts_per_gpu = args.num_experts // args.world_size
 
                     experts = experts[args.local_rank*num_experts_per_gpu:(args.local_rank+1)*num_experts_per_gpu]
 
                     new = deepspeed.moe.layer.MoE(
-                        hidden_size=768,
+                        hidden_size=args.d_model,
                         expert=experts[0],
                         num_experts=args.num_experts,
                         ep_size=args.world_size,
                         k=1,
                         eval_capacity_factor=args.capacity_factor,
-                        #drop_tokens=False,
+                        drop_tokens=False,
                         use_tutel=True,
                         top2_2nd_expert_sampling=False,
                         use_rts=False,
                     )
-
+                    
+                    # Override to use this implementation
                     setattr(new.deepspeed_moe, "gate", 
-                        TopKGate(768, args.num_experts, 1, 1.0, args.capacity_factor, 8, None, False, False, None, False)
+                        TopKGate(
+                            args.d_model, 
+                            args.num_experts, 
+                            k=1, 
+                            capacity_factor=1.0, 
+                            eval_capacity_factor=args.capacity_factor, 
+                            min_capacity=0, 
+                            noisy_gate_policy=None, 
+                            drop_tokens=False, 
+                            use_rts=False, 
+                            ep_group=dist.new_group(ranks=list(range(args.world_size))), 
+                            top2_2nd_expert_sampling=False
+                        )
                     )
 
                     with torch.no_grad():
-                        new.deepspeed_moe.gate.wg.weight.copy_(router.classifier.weight)
+                        new.deepspeed_moe.gate.wg.weight.copy_(router.weight)
                         for i in range(len(experts)):
-                            new.deepspeed_moe.experts.deepspeed_experts[i].wi.weight.copy_(experts[i].wi.weight)
-                            new.deepspeed_moe.experts.deepspeed_experts[i].wo.weight.copy_(experts[i].wo.weight)
+                            for name, param in experts[i].named_parameters():
+                                getattr(new.deepspeed_moe.experts.deepspeed_experts[i], name).copy_(getattr(experts[i], name).weight)
 
                     setattr(module, child_name, TimedModule(MLPWrapper(new), idx=idx[0]))
                     idx[0] += 1
@@ -234,7 +396,7 @@ def run_inference_workload():
         }
     )
 
-    tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir="/cache")
+    tokenizer = AutoTokenizer.from_pretrained(args.model_name, cache_dir="/cache")
 
     flexible_dataset = FlexibleDataset(
         args.dataset, 
@@ -290,6 +452,7 @@ def run_inference_workload():
     
     ############# META #######################
     run_info = vars(args).copy()
+    run_info["system_name"] = "deepspeed-inference"
     with open(f"{args.path}/data.json", "w") as f:
         json.dump({ "start": run_start, "end": run_end, **run_info, "world_size": args.world_size}, f, indent=4)
 
