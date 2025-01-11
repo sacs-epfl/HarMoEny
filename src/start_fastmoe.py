@@ -25,7 +25,6 @@ import argparse
 
 from fmoe.gates.naive_gate import NaiveGate
 from fmoe.layers import FMoE
-#from router import Router 
 from utils import TimedModule, get_timing_modules
 from harmonymoe.router import Router, RouterConfig
 
@@ -40,6 +39,33 @@ parser.add_argument(
     default="google/switch-base-64",
     type=str,
     help="Huggingface model",
+)
+parser.add_argument(
+    "--d_model", default=768, type=int, help="Dimension of model hidden states"
+)
+parser.add_argument(
+    "--type_moe_parent",
+    default="SwitchTransformersLayerFF",
+    type=str,
+    help="class name of model MoE Layer parent",
+)
+parser.add_argument(
+    "--type_moe",
+    default="SwitchTransformersSparseMLP",
+    type=str,
+    help="class name of model MoE Layers",
+)
+parser.add_argument(
+    "--router_tensor_path",
+    default="router.classifier",
+    type=str,
+    help="path from MoE layer to router's tensor",
+)
+parser.add_argument(
+    "--name_experts",
+    default="experts",
+    type=str,
+    help="parameter name of router on MoE",
 )
 parser.add_argument("--system_name", default="fastmoe", type=str)
 parser.add_argument("--dataset", default="sst2", type=str)
@@ -83,7 +109,7 @@ def setup(rank):
     dist.init_process_group("nccl", rank=rank, world_size=args.world_size)
 
     # FASTERMOE 
-    if args.enable_fastermoe == True:
+    if args.system_name == "fastermoe":
         # https://github.com/laekov/fastmoe/tree/master/doc/fastermoe
         ## Smart Scheduling
         os.environ["FMOE_FASTER_SCHEDULE_ENABLE"] = "1"
@@ -142,46 +168,33 @@ def run_inference_workload(rank):
             
             return RouterWrapper
 
-        # class TestRouter(Router):
-        #     def __init__(self, d_model, num_expert, world_size, top_k):
-        #         routerConfig = RouterConfig(
-        #             d_model=768,
-        #             num_experts=args.num_experts,
-        #             weights=nn.Linear(d_model, num_expert, bias=False).weight,
-        #             enable_skew=args.enable_router_skew,
-        #             enable_random=args.enable_router_random,
-        #             enable_uniform=args.enable_router_uniform,
-        #             skew=args.router_skew,
-        #             num_experts_skewed=args.router_num_experts_skewed,
-        #         )
-        #         super().__init__(routerConfig)
-            
-        #     def forward(self, x):
-        #         router_mask, router_probs, router_logits = super().forward(x)
-        #         gate_top_k_idx = torch.argmax(router_mask, dim=-1).unsqueeze(1)
-        #         gate_score = router_probs
-
-        #         return gate_top_k_idx, gate_score
+        def get_tensor_by_path(module, path):
+            parts = path.split(".")
+            current = module
+            for part in parts:
+                current = getattr(current, part)
+            return current
         
-
         # Update to add FMoE to it
         def add_fmoe_model(module, idx):
-            if type(module).__name__ == "SwitchTransformersLayerFF":
+            if type(module).__name__ == args.type_moe_parent:
                 for child_name, child in module.named_children():
-                    if type(child).__name__ == "SwitchTransformersSparseMLP":
-                        router = getattr(child, "router")
-                        experts = getattr(child, "experts")
-                        if type(experts) == nn.ModuleDict:
+                    if type(child).__name__ == args.type_moe:
+                        router = get_tensor_by_path(child, args.router_tensor_path)
+                        experts = get_tensor_by_path(child, args.name_experts)
+                        if isinstance(experts, nn.ModuleDict):
                             experts = list(experts.values())
-                        
+                        elif isinstance(experts, nn.ModuleList):
+                            experts = list(experts)
+
                         num_experts_per_gpu = args.num_experts // args.world_size
 
                         experts = experts[rank*num_experts_per_gpu:(rank+1)*num_experts_per_gpu]
 
                         routerConfig = RouterConfig(
-                            d_model=768,
+                            d_model=args.d_model,
                             num_experts=args.num_experts,
-                            weights=router.classifier.weight,
+                            weights=router.weight,
                             enable_skew=args.enable_router_skew,
                             enable_random=args.enable_router_random,
                             enable_uniform=args.enable_router_uniform,
@@ -189,31 +202,15 @@ def run_inference_workload(rank):
                             num_experts_skewed=args.router_num_experts_skewed,
                         )
 
-                        # CustomRouterGate = type(
-                        #     'CustomRouterGate',
-                        #     (RouterWrapper,),
-                        #     {
-                        #         '__init__': lambda self, d_model, num_expert, world_size, top_k: RouterWrapper.__init__(self, routerConfig)
-                        #     }
-                        # )
-
                         new = FMoE(
                             num_expert=num_experts_per_gpu,
-                            d_model=768,
+                            d_model=args.d_model,
                             world_size=args.world_size,
                             top_k=1,
                             expert=[lambda _, e=e: ExpertWrapper(e) for e in experts],
                             moe_group=moe_group,
                             gate=create_custom_router_gate(routerConfig)
-                            #gate=TestRouter
                         )
-
-                        #gate=Router(routerConfig)
-
-
-                        # if not args.enable_router_skew:
-                        #     with torch.no_grad():
-                        #         new.gate.gate.weight.copy_(router.classifier.weight)
                         
                         setattr(module, child_name, TimedModule(FMoEWrapper(new), idx=idx[0]))
                         idx[0] += 1

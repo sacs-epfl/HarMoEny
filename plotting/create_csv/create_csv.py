@@ -22,7 +22,7 @@ def parse_args():
     parser.add_argument(
         "--metric",
         default="throughput",
-        help="The metric want to create a csv for: (throughput, gpu-balance, expert-freq)"
+        help="The metric want to create a csv for: (throughput, mttft, gpu-balance, expert-freq)"
     )
     parser.add_argument(
         "--num_moe_layers",
@@ -50,6 +50,16 @@ def load_data(args):
                 row[var] = meta[var]
             _df = pd.read_csv(os.path.join(path, "0/e2e.csv"), index_col=0)
             row["throughput (toks/s)"] = meta["num_samples"] / _df.sum(axis=0)["latency (s)"]
+            df.append(row)
+        elif args.metric == "mttft":
+            row = {}
+            for var in args.variables:
+                row[var] = meta[var]
+            _df = pd.read_csv(os.path.join(path, "0/e2e.csv"), index_col=0)
+            _df["TTFT (ms)"] = (_df["latency (s)"] * 1000) / (meta["batch_size"] * meta["world_size"])
+            row["MTTFT (ms)"] = _df["TTFT (ms)"] .mean(axis=0)
+            row["std div"] = _df["TTFT (ms)"] .std()
+            row["num samples"] = len(_df["TTFT (ms)"] )
             df.append(row)
         elif args.metric == "gpu-balance":
             for layer_idx in range(args.num_moe_layers):
