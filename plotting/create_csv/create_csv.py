@@ -88,6 +88,41 @@ def load_data(args):
                         row[i] = df_row[i]
 
                     df.append(row)
+        elif args.metric == "imbalance":
+            df = None
+            for layer_idx in range(args.num_moe_layers):
+                _df = None
+                for rank_idx in range(args.world_size):
+                    __df = pd.read_csv(os.path.join(path, f"{rank_idx}/moe_layer-{layer_idx}.csv"), index_col=0)
+                    __df["expert distribution"] = __df["expert distribution"].apply(ast.literal_eval)
+                    __df = pd.DataFrame(__df["expert distribution"].tolist(), index=__df.index)
+
+                    num_gpus = args.world_size
+                    cols_per_gpu = 16  # Number of columns assigned to each GPU
+
+                    # Compute the sum for each GPU
+                    gpu_sums = {
+                        gpu_idx: __df.iloc[:, gpu_idx * cols_per_gpu : (gpu_idx + 1) * cols_per_gpu].sum(axis=1)
+                        for gpu_idx in range(num_gpus)
+                    }
+
+                    # Combine the results into a new DataFrame
+                    gpu_sums_df = pd.DataFrame(gpu_sums, index=__df.index)
+
+                    if _df is None:
+                        _df = gpu_sums_df
+                    else:
+                        _df += gpu_sums_df
+                
+                _df["max"] = _df.max(axis=1)
+                _df["min"] = _df.min(axis=1)
+                _df["imbalance (%)"] = ((_df["max"] - _df["min"]) / _df["min"]) * 100
+                _df = _df["imbalance (%)"]
+                if df is None:
+                    df = _df
+                else:
+                    df += _df
+            df /= args.num_moe_layers
         elif args.metric == "expert-freq":
             for layer_idx in range(args.num_moe_layers):
                 _df = None
@@ -118,7 +153,8 @@ def load_data(args):
                     df.append(row)
 
 
-    df = pd.DataFrame(df)
+    if isinstance(df, dict):
+        df = pd.DataFrame(df)
     return df
 
 
