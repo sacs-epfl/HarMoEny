@@ -36,8 +36,9 @@ class Router(nn.Module):
             self.router = nn.Linear(
                 self.config.d_model, self.config.num_experts, bias=False, dtype=self.config.weights.dtype
             )
-            with torch.no_grad():
-                self.router.weight.copy_(self.config.weights)
+            if self.config.weights is not None:
+                with torch.no_grad():
+                    self.router.weight.copy_(self.config.weights)
     
     def forward(self, x):
         return self.forward_exec(x)
@@ -76,7 +77,7 @@ class Router(nn.Module):
 
         probs = torch.ones((x.shape[0], 1), dtype=x.dtype, device=x.device)
 
-        return expert_indices, probs, expert_indices
+        return expert_indices, probs, expert_indices.to(dtype=torch.float)
 
     def uniform_forward(self, x):
         prob = torch.full(

@@ -3,6 +3,7 @@
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch import Tensor
 import pynvml
 import psutil
@@ -26,12 +27,23 @@ import argparse
 from utils import TimedModule, get_timing_modules
 from transformers.models.switch_transformers.modeling_switch_transformers import SwitchTransformersBlock, SwitchTransformersLayerSelfAttention, SwitchTransformersLayerCrossAttention
 
-from router import Router
+from harmonymoe.router import Router, RouterConfig
 
 import deepspeed
+from deepspeed.utils import groups
 from deepspeed.moe.sharded_moe import top2gating, topkgating
 from deepspeed.utils.timer import SynchronizedWallClockTimer
 from typing import Callable, Dict, TYPE_CHECKING, Any, Optional, Tuple, Union
+
+try:
+    # To enable Tutel MoE optimizations:
+    #   python3 -m pip install --user --upgrade git+https://github.com/microsoft/tutel@v0.1.x
+    from tutel import moe as tutel_moe
+    TUTEL_INSTALLED = True
+except:
+    # Fail silently so we don't spam logs unnecessarily if user isn't using tutel
+    TUTEL_INSTALLED = False
+    pass
 
 def str2bool(s):
         return s.lower() in ["yes", "y", "true", "t"]
@@ -82,9 +94,19 @@ parser.add_argument("--warmup_rounds", default=3, type=int)
 parser.add_argument("--local_rank", default=0, type=int) 
 parser.add_argument("--world_size", default=8, type=int)
 parser.add_argument("--capacity_factor", default=10.0, type=float)
-parser.add_argument("--enable_router_skew", default=False, type=str2bool)
-parser.add_argument("--router_skew", default=0.0, type=float, help="Value between 0 and 1")
 parser.add_argument("--random_router_skew", default=False, type=str2bool, help="Wether to enable random skewing in the router")
+parser.add_argument("--enable_router_skew", default=False, type=str2bool)
+parser.add_argument("--enable_router_random", default=False, type=str2bool)
+parser.add_argument("--enable_router_uniform", default=False, type=str2bool)
+parser.add_argument(
+    "--router_skew", default=0.0, type=float, help="Value between 0 and 1"
+)
+parser.add_argument(
+    "--router_num_experts_skewed",
+    default=1,
+    type=int,
+    help="Number of experts that receive the skewed proportion",
+)
 args = parser.parse_args()
 
 
@@ -132,8 +154,6 @@ def run_inference_workload():
                 number of experts in model
         """
 
-        wg: torch.nn.Linear
-
         def __init__(self,
                     model_dim: int,
                     num_experts: int,
@@ -163,7 +183,17 @@ def run_inference_workload():
             self.top2_2nd_expert_sampling = top2_2nd_expert_sampling
             # Here is the update by adding my own router I can change the logits
             # I want to do this before the chaos that comes after which I cannot rewrite
-            self.router = Router(args.num_experts, skew=args.router_skew, enable_random=args.random_router_skew) 
+            routerConfig = RouterConfig(
+                d_model=args.d_model,
+                num_experts=args.num_experts,
+                weights=None,
+                enable_skew=args.enable_router_skew,
+                enable_random=args.enable_router_random,
+                enable_uniform=args.enable_router_uniform,
+                skew=args.router_skew,
+                num_experts_skewed=args.router_num_experts_skewed,
+            )
+            self.router = Router(routerConfig) 
             self.enable_router_skew = args.enable_router_skew
 
         def _set_ep_group(self, ep_group):
@@ -207,6 +237,61 @@ def run_inference_workload():
                 self.gate_time = self.timers(TOPK_GATE_TIMER).elapsed(reset=False)
 
             return gate_output
+
+        @torch.jit.script
+        def _capacity(gates: Tensor, capacity_factor: Tensor, min_capacity: Tensor) -> Tensor:
+            # gates has shape of SE
+            num_tokens = gates.shape[0]
+            num_experts = gates.shape[1]
+            # to(torch.int64) works around a bug in torch.onnx.export:
+            # it should cast k to int64 when converting torch.topk but it doesn't.
+            capacity = torch.ceil((num_tokens / num_experts) * capacity_factor).to(torch.int64)
+            if capacity < min_capacity:
+                capacity = min_capacity.to(torch.int64)
+            return capacity
+        
+
+        @torch.jit.script
+        def _top_idx(source, k):
+            return torch.topk(source, k=k, dim=0)[1]
+        
+        @torch.jit.script
+        def _one_hot_to_float(x, num_classes):
+            return F.one_hot(x, num_classes=num_classes).float()
+        
+        def einsum(rule, a, b):
+            USE_EINSUM = True
+
+            if USE_EINSUM:
+                return torch.einsum(rule, a, b)
+            elif rule == 's,se->se':
+                return a.reshape(a.shape[0], -1) * b
+            elif rule == 'se,sc->sec':
+                return a.unsqueeze(2) * b.unsqueeze(1)
+            elif rule == 'se,se->s':
+                return torch.bmm(a.unsqueeze(1), b.unsqueeze(2)).reshape(-1)
+            elif rule == 'se,sec->sec':
+                return a.unsqueeze(2) * b
+            elif rule == 'sec,sm->ecm':
+                s = a.shape[0]
+                e = a.shape[1]
+                c = a.shape[2]
+                m = b.shape[1]
+                return torch.matmul(a.reshape(s, -1).t(), b).reshape(e, c, m)
+            elif rule == 'sec,ecm->sm':
+                return torch.matmul(a.reshape(a.shape[0], -1), b.reshape(-1, b.shape[-1]))
+            elif rule == 'ks,ksm->sm':
+                k = b.shape[0]
+                s = b.shape[1]
+                m = b.shape[2]
+                # [k, s] -> [s, k] -> [s, 1, k]
+                a = a.t().unsqueeze(1)
+                # [k,s,m] -> [k, sm] -> [sm, k] -> [s, m, k]
+                b = b.reshape(k, -1).t().reshape(s, m, k)
+                # bmm([s, 1, k], [s, m, k]^t) -> [s, m, 1]
+                return torch.bmm(a, b.transpose(1, 2)).squeeze(2)
+            else:
+                return torch.einsum(rule, a, b)
         
         def top1gating(logits: Tensor,
                capacity_factor: float,
@@ -217,13 +302,16 @@ def run_inference_workload():
                use_rts: bool = True,
                ep_group: Union[torch.distributed.ProcessGroup, None] = None,
                use_tutel: bool = False) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+            
+            # TODO implement skew
+            
             """Implements Top1Gating on logits."""
             if noisy_gate_policy == 'RSample':
                 logits_w_noise = logits + gumbel_rsample(logits.shape, device=logits.device)
             # everything is in fp32 in this function
 
             gates = F.softmax(logits, dim=1)
-            capacity = _capacity(gates, torch.tensor(capacity_factor), torch.tensor(min_capacity))
+            capacity = TopKGate._capacity(gates, torch.tensor(capacity_factor), torch.tensor(min_capacity))
 
             # Create a mask for 1st's expert per token
             # noisy gating
@@ -233,7 +321,7 @@ def run_inference_workload():
 
             # mask only used tokens
             if used_token is not None:
-                mask1 = einsum("s,se->se", used_token, mask1)
+                mask1 = TopKGate.einsum("s,se->se", used_token, mask1)
 
             # gating decisions
             exp_counts = torch.sum(mask1, dim=0).detach().to(logits.device)
@@ -243,7 +331,7 @@ def run_inference_workload():
                 new_capacity = torch.max(exp_counts).to(logits.device)
                 # Communicate across expert processes to pick the maximum capacity.
                 if ep_group is not None:
-                    print("Here WOAH")
+                    # print("Here WOAH")
                     dist.all_reduce(new_capacity, op=dist.ReduceOp.MAX, group=ep_group)
                 if groups._get_expert_model_parallel_world_size() == 1:
                     # If the non-expert is tensor-parallel, we need to pad the capacity to 'tp'.
@@ -252,6 +340,9 @@ def run_inference_workload():
                     new_capacity = torch.ceil(new_capacity / tp).mul(tp).to(new_capacity.dtype)
                 # Make sure the capacity value does not exceed the number of tokens.
                 capacity = min(new_capacity, torch.tensor(mask1.size(0)).to(new_capacity.device))
+                capacity = min(capacity, torch.tensor(1000).to(capacity.device)) # Set a 1000 artificial max
+
+            # print(f"Capacity: {capacity}")
 
             # Compute l_aux
             me = torch.mean(gates, dim=0)
@@ -273,7 +364,7 @@ def run_inference_workload():
             assert logits.shape[
                 0] >= min_capacity, "No. of tokens (batch-size) should be greater than min_capacity. Either set min_capacity to 0 or increase your batch size."
 
-            top_idx = _top_idx(mask1_rand, capacity)
+            top_idx = TopKGate._top_idx(mask1_rand, capacity)
 
             new_mask1 = mask1 * torch.zeros_like(mask1).scatter_(0, top_idx, 1)
             mask1 = new_mask1
@@ -308,8 +399,8 @@ def run_inference_workload():
             mask1_float = mask1.float()
             gates = gates * mask1_float
 
-            locations1_sc = _one_hot_to_float(locations1_s, capacity)
-            combine_weights = einsum("se,sc->sec", gates, locations1_sc)
+            locations1_sc = TopKGate._one_hot_to_float(locations1_s, capacity)
+            combine_weights = TopKGate.einsum("se,sc->sec", gates, locations1_sc)
 
             dispatch_mask = combine_weights.bool()
 
@@ -346,7 +437,7 @@ def run_inference_workload():
                         k=1,
                         eval_capacity_factor=args.capacity_factor,
                         drop_tokens=False,
-                        use_tutel=True,
+                        use_tutel=False,
                         top2_2nd_expert_sampling=False,
                         use_rts=False,
                     )
@@ -371,8 +462,14 @@ def run_inference_workload():
                     with torch.no_grad():
                         new.deepspeed_moe.gate.wg.weight.copy_(router.weight)
                         for i in range(len(experts)):
-                            for name, param in experts[i].named_parameters():
-                                getattr(new.deepspeed_moe.experts.deepspeed_experts[i], name).copy_(getattr(experts[i], name).weight)
+                            for name, param in new.deepspeed_moe.experts.deepspeed_experts[i].named_parameters():
+                                # Split the name into parts to handle nested attributes
+                                parts = name.split('.')
+                                current_attr = experts[i]
+                                for part in parts:
+                                    current_attr = getattr(current_attr, part)
+                                # Copy the parameter
+                                param.data.copy_(current_attr.data)
 
                     setattr(module, child_name, TimedModule(MLPWrapper(new), idx=idx[0]))
                     idx[0] += 1
@@ -403,7 +500,8 @@ def run_inference_workload():
         tokenizer, 
         model, 
         seq_len=args.seq_len,
-        num_samples=args.num_samples
+        num_samples=args.num_samples,
+        model_name=args.model_name,
     )
     sampler = DistributedSampler(
         flexible_dataset, 
@@ -464,11 +562,17 @@ def run_standard_experiment(ds_engine, loader):
         itr = 0
         for batch in loader:
             batch = {k: v.cuda() for k, v in batch.items()}
-            ds_engine(
-                input_ids=batch["input_ids"], 
-                attention_mask=batch["attention_mask"],
-                decoder_input_ids=batch["decoder_input_ids"],
-            )
+            if "decoder_input_ids" in batch:
+                ds_engine(
+                    input_ids=batch["input_ids"], 
+                    attention_mask=batch["attention_mask"],
+                    decoder_input_ids=batch["decoder_input_ids"]
+                )
+            else:
+                ds_engine(
+                    input_ids=batch["input_ids"], 
+                    attention_mask=batch["attention_mask"],
+                )
             itr += 1
             if itr == args.warmup_rounds:
                 break
@@ -478,11 +582,17 @@ def run_standard_experiment(ds_engine, loader):
         for batch in tqdm(loader):
             start = time.time()
             batch = {k: v.cuda() for k, v in batch.items()}
-            ds_engine(
-                input_ids=batch["input_ids"], 
-                attention_mask=batch["attention_mask"],
-                decoder_input_ids=batch["decoder_input_ids"],
-            )
+            if "decoder_input_ids" in batch:
+                ds_engine(
+                    input_ids=batch["input_ids"], 
+                    attention_mask=batch["attention_mask"],
+                    decoder_input_ids=batch["decoder_input_ids"]
+                )
+            else:
+                ds_engine(
+                    input_ids=batch["input_ids"], 
+                    attention_mask=batch["attention_mask"],
+                )
             end = time.time()
             # UNCOMMENT IF DOING PREDICTION
             # if args.local_rank == 0:
