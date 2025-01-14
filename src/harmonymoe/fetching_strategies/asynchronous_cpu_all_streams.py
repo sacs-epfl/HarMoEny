@@ -3,6 +3,7 @@ import nvtx
 from dataclasses import dataclass
 from concurrent.futures import wait, ThreadPoolExecutor
 
+
 class AsynchronousCPUAllStreams:
 
     @dataclass
@@ -58,7 +59,7 @@ class AsynchronousCPUAllStreams:
                 not_loaded,
                 loaded_slots[:2] + not_loaded_slots + loaded_slots[2:],
             )
-    
+
     def group_execution_for_stream(self, work_order, not_loaded, slot_idxs):
         groups = [[] for _ in range(self.config.cache_size)]
 
@@ -66,43 +67,46 @@ class AsynchronousCPUAllStreams:
             if expert_idx in not_loaded:
                 groups[slot_idxs[i]].append(
                     self.Command(
-                        name="LOAD",
-                        expert_idx=expert_idx,
-                        slot_idx=slot_idxs[i]
+                        name="LOAD", expert_idx=expert_idx, slot_idx=slot_idxs[i]
                     )
                 )
             groups[slot_idxs[i]].append(
                 self.Command(
-                    name="EXECUTE",
-                    expert_idx=expert_idx,
-                    slot_idx=slot_idxs[i]
+                    name="EXECUTE", expert_idx=expert_idx, slot_idx=slot_idxs[i]
                 )
-            )            
-        
-        return groups
+            )
 
+        return groups
 
     def execute_job(self, tokens, expert_mask, schedule=None):
         work_order, need_loading, slot_idxs = self.generate_work_order(expert_mask)
         groups = self.group_execution_for_stream(work_order, need_loading, slot_idxs)
-                           
+
         def start_execution(commands):
-            with torch.no_grad(): # Move it in if want to support training
+            with torch.no_grad():  # Move it in if want to support training
                 with torch.cuda.stream(torch.cuda.Stream()):
                     for command in commands:
                         if command.name == "EXECUTE":
                             with nvtx.annotate(
-                                f"Executing expert {command.expert_idx} on slot {command.slot_idx}", color="blue"
+                                f"Executing expert {command.expert_idx} on slot {command.slot_idx}",
+                                color="blue",
                             ):
-                                tokens[expert_mask[command.expert_idx]] = self.config.cached_experts[
-                                    command.slot_idx
-                                ](tokens[expert_mask[command.expert_idx]])
+                                tokens[expert_mask[command.expert_idx]] = (
+                                    self.config.cached_experts[command.slot_idx](
+                                        tokens[expert_mask[command.expert_idx]]
+                                    )
+                                )
                         elif command.name == "LOAD":
                             with nvtx.annotate(
-                                f"Loading expert {command.expert_idx} into slot {command.slot_idx}", color="green"
+                                f"Loading expert {command.expert_idx} into slot {command.slot_idx}",
+                                color="green",
                             ):
-                                pinned_state_dict = self.config.experts[command.expert_idx].state_dict()
-                                cached_expert = self.config.cached_experts[command.slot_idx]
+                                pinned_state_dict = self.config.experts[
+                                    command.expert_idx
+                                ].state_dict()
+                                cached_expert = self.config.cached_experts[
+                                    command.slot_idx
+                                ]
                                 for name, param in cached_expert.named_parameters():
                                     cpu_param = pinned_state_dict[name]
                                     param.copy_(cpu_param, non_blocking=True)
@@ -110,8 +114,11 @@ class AsynchronousCPUAllStreams:
                             raise Exception("NOT IMPLEMENTED")
 
         with ThreadPoolExecutor(max_workers=self.config.cache_size) as executor:
-            futures = [executor.submit(start_execution, groups[i]) for i in range(self.config.cache_size)]
+            futures = [
+                executor.submit(start_execution, groups[i])
+                for i in range(self.config.cache_size)
+            ]
             for fut in futures:
                 fut.result()
-            
+
         return tokens

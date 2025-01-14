@@ -3,6 +3,7 @@ import torch.nn as nn
 import random
 import json
 
+
 class Scheduler:
     def __init__(
         self,
@@ -72,13 +73,6 @@ class Scheduler:
 
     def get_cache(self):
         if self.gpu_to_experts_list is not None:
-            # if self.scheduling_policy == "exflow":
-            #     return self.gpu_to_experts_list[:]
-            # return list(
-            #     map(
-            #         lambda x: list(map(lambda y: y.item(), x)), self.gpu_to_experts_list
-            #     )
-            # )
             return self.gpu_to_experts_list
         else:
             return None
@@ -91,7 +85,6 @@ class Scheduler:
                 )
             )
         return None
-        # return self.fixed_assign
 
     def get_reference_assign(self):
         if self.is_reference_placement:
@@ -101,13 +94,14 @@ class Scheduler:
                 )
             )
         return None
-        # return self.reference_assign
 
     def __call__(self, meta):
         return self.scheduler(meta)
 
     def distribute_tokens(self, schedule, hidden_states, expert_indices, num_toks_send):
-        tokens = torch.empty((num_toks_send, self.d_model), device="cuda", dtype=hidden_states.dtype)
+        tokens = torch.empty(
+            (num_toks_send, self.d_model), device="cuda", dtype=hidden_states.dtype
+        )
         tokens_idx = 0
         send_splits = []
 
@@ -242,26 +236,6 @@ class Scheduler:
 
         return expert_gpu
 
-    # def schedule_drop(self, meta):
-    #     schedule = [[[0 for _ in range(self.num_gpus)] for _ in range(self.num_experts)] for _ in range(self.num_gpus)]
-
-    #     avg = int(sum(map(lambda t: sum(t).item(), meta)) / self.num_gpus)
-    #     gpu_amt = [0 for _ in range(self.num_gpus)]
-    #     for i in range(self.num_gpus): # source
-    #         for j in range(self.num_experts): # expert
-    #             num_tokens = meta[i][j].item()
-    #             if num_tokens == 0:
-    #                 continue # We do not have work for this one
-    #             start_idx = 0
-    #             for k in range(self.num_gpus): # dest
-    #                 if j in self.gpu_to_experts_list[k]:
-    #                     if gpu_amt[k] < avg:
-    #                         num_tokens_send = min(num_tokens, avg - gpu_amt[k])
-    #                         schedule[i][j][k] = num_tokens_send
-    #                         gpu_amt[k] += num_tokens_send
-
-    #     return torch.tensor(schedule, dtype=torch.long, device="cuda")
-
     def schedule_drop(self, meta):
         schedule = self.schedule_fixed(meta)
 
@@ -304,50 +278,7 @@ class Scheduler:
 
         return schedule
 
-    # OLD
-    def schedule_harmony(self, meta):
-        schedule = self.schedule_fixed(meta)
-
-        avg = meta.sum().item() // self.num_gpus
-
-        gpu_amt = torch.sum(schedule, dim=(0, 1))  # Shape (num_gpus,)
-
-        while (gpu_amt > avg).any():
-            # Identify most overload GPU
-            overloaded_idx = torch.argmax(gpu_amt)  # Long
-
-            # Find GPU sending most tokens to overloaded GPU
-            send_tokens = torch.sum(
-                schedule[:, :, overloaded_idx], dim=1
-            )  # Shape (num_gpus,)
-            sender_idx = torch.argmax(send_tokens)
-
-            # Find the expert sending the most tokens from the sender
-            expert_tokens = schedule[sender_idx, :, overloaded_idx]
-            expert_idx = torch.argmax(expert_tokens)  # Long
-
-            tokens_to_move = expert_tokens[expert_idx]
-
- 
-            if tokens_to_move < self.eq_tokens:
-                break  # Not enough tokens to move
-
-            # Identify least loaded GPU
-            least_idx = torch.argmin(gpu_amt)  # Long
-
-            if least_idx == overloaded_idx or gpu_amt[least_idx] + self.eq_tokens > avg:
-                break
-
-            tokens_send = torch.min(tokens_to_move, avg - gpu_amt[least_idx])
-
-            schedule[sender_idx, expert_idx, overloaded_idx] -= tokens_send
-            schedule[sender_idx, expert_idx, least_idx] += tokens_send
-            gpu_amt[overloaded_idx] -= tokens_send
-            gpu_amt[least_idx] += tokens_send
-
-        return schedule
-    
-    # # Would be better with less tokens 
+    # OLD VERSION (used to emphasis timebreakdown)
     # def schedule_harmony(self, meta):
     #     schedule = self.schedule_fixed(meta)
 
@@ -359,43 +290,86 @@ class Scheduler:
     #         # Identify most overload GPU
     #         overloaded_idx = torch.argmax(gpu_amt)  # Long
 
+    #         # Find GPU sending most tokens to overloaded GPU
+    #         send_tokens = torch.sum(
+    #             schedule[:, :, overloaded_idx], dim=1
+    #         )  # Shape (num_gpus,)
+    #         sender_idx = torch.argmax(send_tokens)
+
+    #         # Find the expert sending the most tokens from the sender
+    #         expert_tokens = schedule[sender_idx, :, overloaded_idx]
+    #         expert_idx = torch.argmax(expert_tokens)  # Long
+
+    #         tokens_to_move = expert_tokens[expert_idx]
+
+    #         if tokens_to_move < self.eq_tokens:
+    #             break  # Not enough tokens to move
+
     #         # Identify least loaded GPU
     #         least_idx = torch.argmin(gpu_amt)  # Long
 
     #         if least_idx == overloaded_idx or gpu_amt[least_idx] + self.eq_tokens > avg:
     #             break
 
-    #         # Find most popular expert on overloaded_idx GPU
-    #         send_tokens = torch.sum(
-    #             schedule[:, :, overloaded_idx], dim=0
-    #         )  # Shape (num_experts,)
-    #         expert_idx = torch.argmax(send_tokens)
+    #         tokens_send = torch.min(tokens_to_move, avg - gpu_amt[least_idx])
 
-    #         if send_tokens[expert_idx] < self.eq_tokens:
-    #             break # Expert does not have enough summed senders to amortize
-            
-    #         amount_overloaded = gpu_amt[overloaded_idx] - avg
-    #         senders = schedule[:, expert_idx, overloaded_idx]
-    #         # Are we still overloaded? AND does our offload GPU still have room?
-    #         while amount_overloaded > 0 and avg - gpu_amt[least_idx] > 0:
-    #             sender_idx = torch.argmax(senders)
-    #             tokens_to_move = senders[sender_idx]
-
-    #             if tokens_to_move <= 0:
-    #                 break # We may have removed self.eq_tokens which is < than the amount overloaded
-
-    #             tokens_send = torch.min(tokens_to_move, avg - gpu_amt[least_idx])
-
-    #             schedule[sender_idx, expert_idx, overloaded_idx] -= tokens_send # This will impact senders
-    #             schedule[sender_idx, expert_idx, least_idx] += tokens_send
-
-    #             gpu_amt[overloaded_idx] -= tokens_send
-    #             gpu_amt[least_idx] += tokens_send
-
-    #             amount_overloaded -= tokens_send
-
+    #         schedule[sender_idx, expert_idx, overloaded_idx] -= tokens_send
+    #         schedule[sender_idx, expert_idx, least_idx] += tokens_send
+    #         gpu_amt[overloaded_idx] -= tokens_send
+    #         gpu_amt[least_idx] += tokens_send
 
     #     return schedule
+
+    # Newer version which benefits from less global tokens
+    def schedule_harmony(self, meta):
+        schedule = self.schedule_fixed(meta)
+
+        avg = meta.sum().item() // self.num_gpus
+
+        gpu_amt = torch.sum(schedule, dim=(0, 1))  # Shape (num_gpus,)
+
+        while (gpu_amt > avg).any():
+            # Identify most overload GPU
+            overloaded_idx = torch.argmax(gpu_amt)  # Long
+
+            # Identify least loaded GPU
+            least_idx = torch.argmin(gpu_amt)  # Long
+
+            if least_idx == overloaded_idx or gpu_amt[least_idx] + self.eq_tokens > avg:
+                break
+
+            # Find most popular expert on overloaded_idx GPU
+            send_tokens = torch.sum(
+                schedule[:, :, overloaded_idx], dim=0
+            )  # Shape (num_experts,)
+            expert_idx = torch.argmax(send_tokens)
+
+            if send_tokens[expert_idx] < self.eq_tokens:
+                break  # Expert does not have enough summed senders to amortize
+
+            amount_overloaded = gpu_amt[overloaded_idx] - avg
+            senders = schedule[:, expert_idx, overloaded_idx]
+            # Are we still overloaded? AND does our offload GPU still have room?
+            while amount_overloaded > 0 and avg - gpu_amt[least_idx] > 0:
+                sender_idx = torch.argmax(senders)
+                tokens_to_move = senders[sender_idx]
+
+                if tokens_to_move <= 0:
+                    break  # We may have removed self.eq_tokens which is < than the amount overloaded
+
+                tokens_send = torch.min(tokens_to_move, avg - gpu_amt[least_idx])
+
+                schedule[
+                    sender_idx, expert_idx, overloaded_idx
+                ] -= tokens_send  # This will impact senders
+                schedule[sender_idx, expert_idx, least_idx] += tokens_send
+
+                gpu_amt[overloaded_idx] -= tokens_send
+                gpu_amt[least_idx] += tokens_send
+
+                amount_overloaded -= tokens_send
+
+        return schedule
 
     def schedule_even_split(self, meta):
         schedule = [

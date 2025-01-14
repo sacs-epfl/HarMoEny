@@ -4,4 +4,10 @@ from .synchronous_cpu import SynchronousCPU
 from .gpu import GPU
 from .config import FetchingStrategyConfig
 
-__all__ = ["AsynchronousCPU", "AsynchronousCPUAllStreams", "SynchronousCPU", "GPU", "FetchingStrategyConfig"]
+__all__ = [
+    "AsynchronousCPU",
+    "AsynchronousCPUAllStreams",
+    "SynchronousCPU",
+    "GPU",
+    "FetchingStrategyConfig",
+]

@@ -34,12 +34,15 @@ class Router(nn.Module):
         else:
             self.forward_exec = self.standard_forward
             self.router = nn.Linear(
-                self.config.d_model, self.config.num_experts, bias=False, dtype=self.config.weights.dtype
+                self.config.d_model,
+                self.config.num_experts,
+                bias=False,
+                dtype=self.config.weights.dtype,
             )
             if self.config.weights is not None:
                 with torch.no_grad():
                     self.router.weight.copy_(self.config.weights)
-    
+
     def forward(self, x):
         return self.forward_exec(x)
 
@@ -65,7 +68,7 @@ class Router(nn.Module):
         multinomial_probs = torch.full(
             (self.config.num_experts,), multinomial_prob, device=x.device
         )
-        multinomial_probs[:self.config.num_experts_skewed] = skewed_multinomial_prob
+        multinomial_probs[: self.config.num_experts_skewed] = skewed_multinomial_prob
 
         expert_indices = torch.multinomial(
             multinomial_probs, num_samples=x.shape[0], replacement=True

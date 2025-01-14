@@ -24,7 +24,6 @@ from stats import Stats
 
 from harmonymoe.utils import replace_moe_layer, get_moe_experts, get_moe_layers
 from harmonymoe.moe_layer import MoEConfig, MoELayer
-from router import Router
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"

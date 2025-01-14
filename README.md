@@ -1,27 +1,23 @@
-# Cloning
-`git clone --recurse-submodules git@github.com:Shamauk/moe.git`
+# HarMoEny
+This reposity holds the code to HarMoEny _and_ the accompanying artifacts for ATC'25. The code for HarMoEny can be found under `scr/harmonymoe`.
 
-# Running environment
+## Pre-Setup
+If you are using an amazon EC2 instance, we recommend **p3dn.24xlarge**: which is the closest to our DGX1 machine. There is a setup script for your ec2 machine.
 ```bash
-./start_image.sh
+cd setup
+./setup-ec2.sh
+```  
+This script will install all necessary packages and libraries **and** reboot the instance. If you are using your own server you may already have many of these already installed. 
+
+## Setup
+To run HarMoEny's artifacts, a Dockerfile, is provided, with all the necessary versions for each library. Please build the image with the following command.
+```bash
+./build_image.sh
 ```
 
-# Running experiment
-```bash
-python3 start.py num_gpus port_num policy dataset_name experiment_name
-```
+## Running
+Once the image is built you can start the image with `./start_image.sh`. After navigation to `cd experiments` you can find scripts to execute the various experiments and serve as inspiration for creating your own.
 
-# Plotting
-```bash
-cd plotting
-python3 plot_experiment.py num_gpus paths_to_collected_traces
-```
-
-# Adding new scheduling policies
-`vim transformers/src/transformers/models/switch_transformers/modeling_switch_transformers.py `
-Under class SwitchTransformersSparseMLP create a new function and update match statement to include new policy
-
-# Formatting
-```bash
-black {file}
-```
+## Important
+- If you want to run ExFlow you need to get a gurobi license; see `licenses/README.md`.
+- HF will save to `/cache` inside the docker container. The default location is `../cache`, you can change it in `start_image.sh`.

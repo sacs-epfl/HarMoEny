@@ -1,9 +1,0 @@
-git clone https://github.com/AutoGPTQ/AutoGPTQ.git /workspace/auto-gptq
-cd /workspace/auto-gptq/
-python3 setup.py bdist_wheel
-python3 -m pip install dist/auto_gptq-*.whl
-
-pip3 uninstall -y auto-gptq
-git clone https://github.com/PanQiWei/AutoGPTQ
-cd AutoGPTQ
-DISABLE_QIGEN=1 pip3 install .

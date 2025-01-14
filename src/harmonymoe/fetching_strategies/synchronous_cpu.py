@@ -1,6 +1,7 @@
 import torch
 import nvtx
 
+
 class SynchronousCPU:
     def __init__(self, config):
         self.config = config
@@ -12,7 +13,7 @@ class SynchronousCPU:
             f"Loading expert {expert_idx} into slot {slot_idx}", color="green"
         ):
             with torch.no_grad():
-                pinned_state_dict = self.config.experts[expert_idx]#.state_dict()
+                pinned_state_dict = self.config.experts[expert_idx]  # .state_dict()
 
                 cached_expert = self.config.cached_experts[slot_idx]
                 for name, param in cached_expert.named_parameters():
@@ -45,7 +46,7 @@ class SynchronousCPU:
                 self.load_expert_into_slot_synchronously(expert_idx, slot_idx)
             else:
                 slot_idx = self.config.cache[self.config.rank].index(expert_idx)
-                
+
             tokens[expert_mask[expert_idx]] = self.config.cached_experts[slot_idx](
                 tokens[expert_mask[expert_idx]]
             )

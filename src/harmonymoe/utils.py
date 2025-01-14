@@ -65,9 +65,7 @@ def _replace_moe_layer(
                 local_config.layer_idx = layer_idx[0]
                 local_config.experts = pinned_experts
                 local_config.expert_example = experts[0]
-                router = get_tensor_by_path(
-                    child, router_tensor_path
-                )
+                router = get_tensor_by_path(child, router_tensor_path)
                 local_config.router_weights = router.weight
                 new_moe_layer = MoELayer(local_config)
 

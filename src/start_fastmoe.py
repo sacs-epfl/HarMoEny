@@ -5,9 +5,6 @@ import torch
 import torch.nn as nn
 import torch.distributed as dist
 import torch.multiprocessing as mp 
-import pynvml
-import psutil
-from threading import Thread
 import sys
 import os 
 import time
@@ -21,83 +18,15 @@ from torch.utils.data import DataLoader, DistributedSampler
 from transformers import AutoTokenizer, AutoModel
 
 from flexible_dataset import FlexibleDataset
-import argparse 
-
-from fmoe.gates.naive_gate import NaiveGate
+from stats import Stats
 from fmoe.layers import FMoE
 from utils import TimedModule, get_timing_modules
 from harmonymoe.router import Router, RouterConfig
+from args import Args
 
-def str2bool(s):
-        return s.lower() in ["yes", "y", "true", "t"]
-
-parser = argparse.ArgumentParser(
-    prog="Run inference on FasterMoE",
-)
-parser.add_argument(
-    "--model_name",
-    default="google/switch-base-64",
-    type=str,
-    help="Huggingface model",
-)
-parser.add_argument(
-    "--d_model", default=768, type=int, help="Dimension of model hidden states"
-)
-parser.add_argument(
-    "--type_moe_parent",
-    default="SwitchTransformersLayerFF",
-    type=str,
-    help="class name of model MoE Layer parent",
-)
-parser.add_argument(
-    "--type_moe",
-    default="SwitchTransformersSparseMLP",
-    type=str,
-    help="class name of model MoE Layers",
-)
-parser.add_argument(
-    "--router_tensor_path",
-    default="router.classifier",
-    type=str,
-    help="path from MoE layer to router's tensor",
-)
-parser.add_argument(
-    "--name_experts",
-    default="experts",
-    type=str,
-    help="parameter name of router on MoE",
-)
-parser.add_argument("--system_name", default="fastmoe", type=str)
-parser.add_argument("--dataset", default="sst2", type=str)
-parser.add_argument("--num_samples", default=0, type=int, help="Number of total samples across all GPUs")
-parser.add_argument("--batch_size", default=250, type=int, help="Batch size per GPU")
-parser.add_argument("--seq_len", default=120, type=int)
-parser.add_argument("--path", default="outputs/out", type=str, help="Specify where to save path")
-parser.add_argument("--num_experts", default=8, type=int, help="Number of experts we want to match dense model to")
-parser.add_argument("--world_size", default=torch.cuda.device_count(), type=int, help="Number of GPUs to use")
-parser.add_argument("--port", default="1234", type=str)
-parser.add_argument("--warmup_rounds", default=3, type=int)
-parser.add_argument("--random_router_skew", default=False, type=str2bool, help="Wether to enable random skewing in the router")
-parser.add_argument("--enable_router_skew", default=False, type=str2bool)
-parser.add_argument("--enable_router_random", default=False, type=str2bool)
-parser.add_argument("--enable_router_uniform", default=False, type=str2bool)
-parser.add_argument(
-    "--router_skew", default=0.0, type=float, help="Value between 0 and 1"
-)
-parser.add_argument(
-    "--router_num_experts_skewed",
-    default=1,
-    type=int,
-    help="Number of experts that receive the skewed proportion",
-)
-args = parser.parse_args()
+args = Args().fastmoe()
 if args.system_name != "fastmoe" and args.system_name != "fastermoe":
     raise Exception("Only fastmoe and fastermoe supported")
-
-
-############# GLOBAL AFFAIRS ################
-pynvml.nvmlInit()
-#############################################
 
 def setup(rank):
     os.environ["HF_HOME"] = "/cache"
@@ -316,20 +245,6 @@ def run_standard_experiment(model, loader):
 def cleanup():
     dist.destroy_process_group()
 
-def fetch_metrics(stop_event, output_list):
-    handles = [pynvml.nvmlDeviceGetHandleByIndex(index) for index in range(args.world_size)]
-
-    while not stop_event.is_set():
-        output_list.append({
-            "timestamp": time.time(),
-            "gpu_util": [pynvml.nvmlDeviceGetUtilizationRates(handle).gpu for handle in handles],
-            "gpu_mem_used": [pynvml.nvmlDeviceGetMemoryInfo(handle).used for handle in handles],
-            "cpu_util": psutil.cpu_percent(interval=None),
-            "cpu_mem_used": psutil.virtual_memory().used,
-        })
-
-        time.sleep(1)
-
 def signal_handler(sig, frame):
     print("Main process received Ctrl+C! Terminating all child processes...")
     for child in mp.active_children():
@@ -340,11 +255,8 @@ def signal_handler(sig, frame):
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, signal_handler)
 
-    metrics = []
-    stop_event = mp.Event()
-
-    metric_thread = Thread(target=fetch_metrics, args=(stop_event, metrics))
-    metric_thread.start()
+    stats = Stats(gpu=True, cpu=True, num_gpus=args.world_size)
+    stats.start()
 
     processes = []
     mp.set_start_method('spawn', force=True)
@@ -355,12 +267,7 @@ if __name__ == "__main__":
     for p in processes:
         p.join()
 
-    stop_event.set()
-    metric_thread.join()
-
-    df = pd.DataFrame(metrics)
-    df.to_csv(f"{args.path}/stats.csv")
+    stats.stop()
+    stats.save(path=args.path)
 
     print("All done :)")
-
-    pynvml.nvmlShutdown()

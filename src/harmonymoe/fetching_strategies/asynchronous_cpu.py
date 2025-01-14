@@ -1,6 +1,7 @@
 import torch
 import nvtx
 
+
 class AsynchronousCPU:
     def __init__(self, config):
         self.config = config
@@ -17,7 +18,6 @@ class AsynchronousCPU:
         self.finished_event = torch.cuda.Event(enable_timing=False)
 
         self.loaded_not_loaded = self.loaded_not_loaded_mixed
-
 
     def load_expert_into_slot(self, expert_idx, slot_idx):
         with nvtx.annotate(
@@ -57,7 +57,7 @@ class AsynchronousCPU:
                 else:
                     not_loaded.append(i)
 
-        return loaded, not_loaded 
+        return loaded, not_loaded
 
     def loaded_not_loaded_mixed(self, expert_mask):
         loaded = []
@@ -69,16 +69,10 @@ class AsynchronousCPU:
                     slot_idx = self.local_cache.index(i)
 
                     # expert_idx, slot_idx, num_toks
-                    loaded.append(
-                        (
-                            i,
-                            slot_idx,
-                            expert_mask[i].shape[0]
-                        )
-                    )
+                    loaded.append((i, slot_idx, expert_mask[i].shape[0]))
                 except ValueError:
                     not_loaded.append(i)
-        
+
         return loaded, not_loaded
 
     def generate_work_order(self, expert_mask):
@@ -119,9 +113,7 @@ class AsynchronousCPU:
             ):
                 with torch.cuda.stream(self.comp_stream):
                     if expert_idx != self.local_cache[slot_idx]:
-                        self.comp_stream.wait_event(
-                            self.expert_loaded[expert_idx]
-                        )
+                        self.comp_stream.wait_event(self.expert_loaded[expert_idx])
 
                     # Execute the expert on the tokens
                     tokens[expert_mask[expert_idx]] = self.config.cached_experts[
@@ -136,10 +128,8 @@ class AsynchronousCPU:
             elif (
                 expert_idx != self.local_cache[slot_idx]
             ):  # Nothing else to load, do I need to bring in the original?
-                self.load_expert_into_slot(
-                    self.local_cache[slot_idx], slot_idx
-                )
-            
+                self.load_expert_into_slot(self.local_cache[slot_idx], slot_idx)
+
             if expert_idx == last_expert_exec:
                 if expert_idx != self.local_cache[slot_idx]:
                     self.finished_event.record(stream=self.load_stream)

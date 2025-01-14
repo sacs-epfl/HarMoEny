@@ -5,29 +5,25 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
-import pynvml
-import psutil
 import torch.distributed as dist
 import torch.multiprocessing as mp 
-from threading import Thread
 import sys
 import os 
 import time
 import csv
 import json
-import pandas as pd
 from tqdm import tqdm
 
 from torch.utils.data import DataLoader, DistributedSampler
 from transformers import AutoTokenizer, AutoModel
 
 from flexible_dataset import FlexibleDataset
-import argparse 
+from stats import Stats
 
 from utils import TimedModule, get_timing_modules
-from transformers.models.switch_transformers.modeling_switch_transformers import SwitchTransformersBlock, SwitchTransformersLayerSelfAttention, SwitchTransformersLayerCrossAttention
 
 from harmonymoe.router import Router, RouterConfig
+from args import Args
 
 import deepspeed
 from deepspeed.utils import groups
@@ -45,74 +41,7 @@ except:
     TUTEL_INSTALLED = False
     pass
 
-def str2bool(s):
-        return s.lower() in ["yes", "y", "true", "t"]
-
-parser = argparse.ArgumentParser(
-    prog="Run inference on DeepSpeed-MoE inference engine",
-)
-parser.add_argument(
-    "--model_name",
-    default="google/switch-base-64",
-    type=str,
-    help="Huggingface model",
-)
-parser.add_argument(
-    "--d_model", default=768, type=int, help="Dimension of model hidden states"
-)
-parser.add_argument(
-    "--type_moe_parent",
-    default="SwitchTransformersLayerFF",
-    type=str,
-    help="class name of model MoE Layer parent",
-)
-parser.add_argument(
-    "--type_moe",
-    default="SwitchTransformersSparseMLP",
-    type=str,
-    help="class name of model MoE Layers",
-)
-parser.add_argument(
-    "--router_tensor_path",
-    default="router.classifier",
-    type=str,
-    help="path from MoE layer to router's tensor",
-)
-parser.add_argument(
-    "--name_experts",
-    default="experts",
-    type=str,
-    help="parameter name of router on MoE",
-)
-parser.add_argument("--dataset", default="sst2", type=str)
-parser.add_argument("--num_samples", default=0, type=int, help="Number of total samples across all GPUs")
-parser.add_argument("--batch_size", default=250, type=int, help="Batch size per GPU")
-parser.add_argument("--seq_len", default=120, type=int)
-parser.add_argument("--path", default="outputs/out", type=str, help="Specify where to save path")
-parser.add_argument("--num_experts", default=8, type=int, help="Number of experts we want to match dense model to")
-parser.add_argument("--warmup_rounds", default=3, type=int)
-parser.add_argument("--local_rank", default=0, type=int) 
-parser.add_argument("--world_size", default=8, type=int)
-parser.add_argument("--capacity_factor", default=10.0, type=float)
-parser.add_argument("--random_router_skew", default=False, type=str2bool, help="Wether to enable random skewing in the router")
-parser.add_argument("--enable_router_skew", default=False, type=str2bool)
-parser.add_argument("--enable_router_random", default=False, type=str2bool)
-parser.add_argument("--enable_router_uniform", default=False, type=str2bool)
-parser.add_argument(
-    "--router_skew", default=0.0, type=float, help="Value between 0 and 1"
-)
-parser.add_argument(
-    "--router_num_experts_skewed",
-    default=1,
-    type=int,
-    help="Number of experts that receive the skewed proportion",
-)
-args = parser.parse_args()
-
-
-############# GLOBAL AFFAIRS ################
-pynvml.nvmlInit()
-#############################################
+args = Args().deepspeed()
 
 def setup():
     os.environ["HF_HOME"] = "/cache"
@@ -157,6 +86,7 @@ def run_inference_workload():
         def __init__(self,
                     model_dim: int,
                     num_experts: int,
+                    weight: any = None,
                     k: int = 1,
                     capacity_factor: float = 1.0,
                     eval_capacity_factor: float = 1.0,
@@ -186,7 +116,7 @@ def run_inference_workload():
             routerConfig = RouterConfig(
                 d_model=args.d_model,
                 num_experts=args.num_experts,
-                weights=None,
+                weights=weight,
                 enable_skew=args.enable_router_skew,
                 enable_random=args.enable_router_random,
                 enable_uniform=args.enable_router_uniform,
@@ -342,8 +272,6 @@ def run_inference_workload():
                 capacity = min(new_capacity, torch.tensor(mask1.size(0)).to(new_capacity.device))
                 capacity = min(capacity, torch.tensor(1000).to(capacity.device)) # Set a 1000 artificial max
 
-            # print(f"Capacity: {capacity}")
-
             # Compute l_aux
             me = torch.mean(gates, dim=0)
             ce = torch.mean(mask1.float(), dim=0)
@@ -436,8 +364,8 @@ def run_inference_workload():
                         ep_size=args.world_size,
                         k=1,
                         eval_capacity_factor=args.capacity_factor,
-                        drop_tokens=False,
-                        use_tutel=False,
+                        drop_tokens=True,
+                        use_tutel=TUTEL_INSTALLED, # Can set this to False if not wanting to use Tutel
                         top2_2nd_expert_sampling=False,
                         use_rts=False,
                     )
@@ -447,6 +375,7 @@ def run_inference_workload():
                         TopKGate(
                             args.d_model, 
                             args.num_experts, 
+                            weight=router.weight,
                             k=1, 
                             capacity_factor=1.0, 
                             eval_capacity_factor=args.capacity_factor, 
@@ -460,7 +389,7 @@ def run_inference_workload():
                     )
 
                     with torch.no_grad():
-                        new.deepspeed_moe.gate.wg.weight.copy_(router.weight)
+                       # new.deepspeed_moe.gate.wg.weight.copy_(router.weight)
                         for i in range(len(experts)):
                             for name, param in new.deepspeed_moe.experts.deepspeed_experts[i].named_parameters():
                                 # Split the name into parts to handle nested attributes
@@ -594,43 +523,18 @@ def run_standard_experiment(ds_engine, loader):
                     attention_mask=batch["attention_mask"],
                 )
             end = time.time()
-            # UNCOMMENT IF DOING PREDICTION
-            # if args.local_rank == 0:
-            #     print(end-start)
             latencies.append(end-start)
         run_end = time.time()
     
     return latencies, run_start, run_end
 
-def fetch_metrics(stop_event, output_list):
-    handles = [pynvml.nvmlDeviceGetHandleByIndex(index) for index in range(args.world_size)]
-
-    while not stop_event.is_set():
-        output_list.append({
-            "timestamp": time.time(),
-            "gpu_util": [pynvml.nvmlDeviceGetUtilizationRates(handle).gpu for handle in handles],
-            "gpu_mem_used": [pynvml.nvmlDeviceGetMemoryInfo(handle).used for handle in handles],
-            "cpu_util": psutil.cpu_percent(interval=None),
-            "cpu_mem_used": psutil.virtual_memory().used,
-        })
-
-        time.sleep(1)
-
 if __name__ == "__main__":
-    metrics = []
-    stop_event = mp.Event()
-
-    metric_thread = Thread(target=fetch_metrics, args=(stop_event, metrics))
-    metric_thread.start()
+    stats = Stats(gpu=True, cpu=True, num_gpus=args.world_size)
+    stats.start()
 
     run_inference_workload()
 
-    stop_event.set()
-    metric_thread.join()
-
-    df = pd.DataFrame(metrics)
-    df.to_csv(f"{args.path}/stats.csv")
+    stats.stop()
+    stats.save(path=args.path)
 
     print("All done :)")
-
-    pynvml.nvmlShutdown()
