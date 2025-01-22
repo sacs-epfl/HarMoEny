@@ -60,19 +60,41 @@ class Router(nn.Module):
         return expert_indices, probs, logits
 
     def skew_forward(self, x):
-        skewed_multinomial_prob = self.config.skew / self.config.num_experts_skewed
-        multinomial_prob = (1.0 - self.config.skew) / (
-            self.config.num_experts - self.config.num_experts_skewed
-        )
+        # skewed_multinomial_prob = self.config.skew / self.config.num_experts_skewed
+        # multinomial_prob = (1.0 - self.config.skew) / (
+        #     self.config.num_experts - self.config.num_experts_skewed
+        # )
+
+        # multinomial_probs = torch.full(
+        #     (self.config.num_experts,), multinomial_prob, device=x.device
+        # )
+        # multinomial_probs[: self.config.num_experts_skewed] = skewed_multinomial_prob
+
+        non_skewed_proportion = 1 / (self.config.skew + self.config.num_experts)
+        skewed_proportion = (self.config.num_experts_skewed + self.config.skew) / (self.config.num_experts_skewed * (self.config.skew + self.config.num_experts))
 
         multinomial_probs = torch.full(
-            (self.config.num_experts,), multinomial_prob, device=x.device
+            (self.config.num_experts,), non_skewed_proportion, device=x.device
         )
-        multinomial_probs[: self.config.num_experts_skewed] = skewed_multinomial_prob
+        multinomial_probs[:self.config.num_experts_skewed] = skewed_proportion
+        # multinomial_probs[:self.config.num_experts_skewed] += self.config.skew / self.config.num_experts_skewed
+        # multinomial_probs[self.config.num_experts_skewed:] -= self.config.skew / (self.config.num_experts - self.config.num_experts_skewed)
 
-        expert_indices = torch.multinomial(
-            multinomial_probs, num_samples=x.shape[0], replacement=True
-        )
+        num_tokens_per_expert = (multinomial_probs * x.shape[0]).floor().long()
+
+        disrepancy = x.shape[0] - num_tokens_per_expert.sum()
+        for i in range(disrepancy): # Disrepancy must be less than self.config.num_experts
+            multinomial_probs[i] += 1
+        
+        expert_indices = []
+        for expert_idx, num_tokens in enumerate(num_tokens_per_expert):
+            expert_indices.append(torch.full((num_tokens.item(),), expert_idx, dtype=torch.long, device=x.device))
+        
+        expert_indices = torch.cat(expert_indices)
+
+        # expert_indices = torch.multinomial(
+        #     multinomial_probs, num_samples=x.shape[0], replacement=True
+        # )
 
         expert_indices = nn.functional.one_hot(
             expert_indices, num_classes=self.config.num_experts

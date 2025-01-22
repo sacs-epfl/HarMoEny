@@ -153,7 +153,7 @@ def load_data(args):
                     df.append(row)
 
 
-    if isinstance(df, dict):
+    if isinstance(df, dict) or isinstance(df, list):
         df = pd.DataFrame(df)
     return df
 
