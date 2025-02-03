@@ -14,6 +14,9 @@ from tqdm import tqdm
 from args import Args
 import logging
 from concurrent.futures import as_completed, ThreadPoolExecutor
+from copy import deepcopy
+from bitsandbytes.nn import Linear4bit, Linear8bitLt
+from bitsandbytes.functional import dequantize_4bit
 
 from torch.utils.data import DataLoader, DistributedSampler
 from transformers import AutoTokenizer, AutoModel, AutoModelForCausalLM, BitsAndBytesConfig
@@ -52,16 +55,84 @@ def setup(rank, timeout=timedelta(minutes=30)):
     )
 
 def generate_model(rank):
-    dtype = "auto"
-    if args.model_dtype:
+    if args.model_dtype == "int8" and args.loader == "transformers":
+        #if rank == 0:
+        quantization_config = BitsAndBytesConfig(
+            load_in_4bit=True, 
+            bnb_4bit_compute_dtype=torch.float32,
+        )
+
+        model = AutoModel.from_pretrained(
+            args.model_name, 
+            quantization_config=quantization_config, 
+        )
+
+        # print(model.config)
+        # exit(0)
+
+        model.cpu()
+        torch.cuda.empty_cache()  # Run after moving to CPU
+
+        device = f"cuda:{rank}"
+        if "Mixtral" in args.model_name:
+            for layer in model.layers:
+                moe = layer.block_sparse_moe
+                for expert_idx in range(len(moe.experts)):
+                    original_expert = moe.experts[expert_idx]
+                                        
+                    # Convert each linear layer
+                    for name, module in original_expert.named_children():
+                        if isinstance(module, Linear4bit):
+                            module = module.to(device)
+
+                            quantized_data = module.weight.data  # Typically torch.uint8
+                            quant_state = module.quant_state  # Contains scale and zero point
+                            
+                            # Dequantize the 4-bit weights
+                            decoded_weights = dequantize_4bit(quantized_data, quant_state)
+                            decoded_weights = decoded_weights.view(module.out_features, module.in_features)
+                            decoded_weights = decoded_weights.to("cpu")
+                            module = module.to("cpu")
+
+                            new_linear = torch.nn.Linear(
+                                module.in_features,
+                                module.out_features,
+                                bias=module.bias is not None,
+                                dtype=torch.float32,
+                            )
+
+                            with torch.no_grad():
+                                new_linear.weight.copy_(decoded_weights) #.half()
+
+                                if module.bias is not None:
+                                    new_linear.bias.copy_(module.bias.data.float()) #.half()
+
+                            setattr(original_expert, name, new_linear)
+
+        #     model.save_pretrained("/cache/quant")
+        #     print("Finished saving model. If you would like to use it set path and run without special dtype")
+        # return None
+
+    elif args.model_dtype == "int4" and args.loader == "transformers":
+        quantization_config = BitsAndBytesConfig(
+            load_in_4bit=True, 
+            bnb_4bit_compute_dtype=torch.float32,
+        )
+
+        model = AutoModel.from_pretrained(
+            args.model_name, 
+            quantization_config=quantization_config, 
+        )
+
+        model.cpu()
+        torch.cuda.empty_cache()  # Run after moving to CPU
+    else:
+        dtype = "auto"
         if args.model_dtype == "float16":
             dtype = torch.float16
         elif args.model_dtype == "float":
             dtype = torch.float
-    if args.model_dtype == "int8" and args.loader == "transformers":
-        quantization_config = BitsAndBytesConfig(load_in_8bit=True)
-        model = AutoModel.from_pretrained(args.model_name, quantization_config=quantization_config, device_map={"": "cpu"})
-    else:
+
         if args.loader == "transformers":
             model = AutoModel.from_pretrained(args.model_name, torch_dtype=dtype)
         elif args.loader == "awq":
@@ -110,7 +181,10 @@ def run_inference_workload(rank):
         mp.current_process().name = f"Worker-{rank}"
 
         model = generate_model(rank)
-        model.cuda()
+        if model is None:
+            return
+
+        model.to(f"cuda:{rank}")
         model.eval()
 
         tokenizer = AutoTokenizer.from_pretrained(args.model_name)

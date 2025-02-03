@@ -1,0 +1,5 @@
+,router_skew,scheduling_policy,throughput (toks/s)
+0,0.9,deepspeed,4.542962586352043
+1,0.9,drop,9.095975308759694
+2,0.9,even_split,6.1676399344562975
+3,0.9,harmony,6.109006910044634

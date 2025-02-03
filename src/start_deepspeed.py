@@ -365,7 +365,7 @@ def run_inference_workload():
                         k=1,
                         eval_capacity_factor=args.capacity_factor,
                         drop_tokens=True,
-                        use_tutel=TUTEL_INSTALLED, # Can set this to False if not wanting to use Tutel
+                        use_tutel=False, #TUTEL_INSTALLED, # Can set this to False if not wanting to use Tutel
                         top2_2nd_expert_sampling=False,
                         use_rts=False,
                     )

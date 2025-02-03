@@ -8,17 +8,14 @@ num_experts=128
 expert_fetching_strategy="async-cpu"
 enable_skew=True
 num_experts_skewed=1
-enable_random=False
-enable_uniform=False
 eq_tokens=1512 # 1512
 warmup_len=3
 
-skews=(0.0 0.5 0.9)
+skews=(0.9 0.5 0.0)
 policies=("deepspeed" "harmony" "drop" "even_split" "exflow")
-# policies=("harmony")
 
 batch_size_harmony_drop_even_split=64
-batch_size_deepspeed_exflow=(64 32 18)
+batch_size_deepspeed_exflow=(18 32 64)
 
 cd ..
 for skew_index in "${!skews[@]}"
@@ -47,8 +44,6 @@ do
                 --expert_fetching_strategy "async-cpu" \
                 --warmup_rounds $warmup_len \
                 --enable_router_skew $enable_skew \
-                --enable_router_random $enable_random \
-                --enable_router_uniform $enable_uniform \
                 --router_skew $skew \
                 --router_num_experts_skewed $num_experts_skewed \
                 --pa "outputs/exp-switch128-policies-skew/$datetime/$skew-$policy"

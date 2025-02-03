@@ -20,6 +20,9 @@ skews=(0.0 0.5 0.9)
 batch_size_deepspeed_exflow=(16 8 2)
 batch_size_harmony_drop_even_split=16
 
+policies=("even_split")
+skews=(0.9)
+
 cd ..
 for skew_index in "${!skews[@]}"
 do

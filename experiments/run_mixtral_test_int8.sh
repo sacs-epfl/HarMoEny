@@ -1,22 +1,28 @@
 datetime=$(date +"%Y-%m-%d_%H-%M")
 
-num_samples=1920
+num_samples=640
 seq_len=1024
-world_size=6
-expert_cache_size=10
+world_size=4
+expert_cache_size=2
 expert_fetching_strategy="async-cpu"
-eq_tokens=1512 # will prob need updating
+eq_tokens=1512 # 2048
 warmup_len=3
 
 enable_skew=True
 num_experts_skewed=1
 
+# TODO run exflow thing
 # exflow will need to be rerun for this model exflow removed temporarily
-policies=("deepspeed" "harmony" "even_split" "drop" "exflow")
-skews=(0.9 0.5 0.0)
+policies=("even_split" "harmony" "deepspeed" "drop")
+skews=(0.0 0.5 0.9)
 
-batch_size_deepspeed_exflow=(4 8 32)
-batch_size_harmony_drop_even_split=32
+batch_size_deepspeed_exflow=(16 8 2)
+batch_size_harmony_drop_even_split=16
+
+# OVERRIDES 
+skews=(0.9)
+batch_size_deepspeed_exflow=(2)
+batch_size_harmony_drop_even_split=16
 
 cd ..
 for skew_index in "${!skews[@]}"
@@ -27,7 +33,7 @@ do
         if [[ "$policy" == "harmony" || "$policy" == "drop" || "$policy" == "even_split" ]]; then
             batch_size=$batch_size_harmony_drop_even_split
         else
-            batch_size=$batch_size_deepspeed_exflow
+            batch_size=${batch_size_deepspeed_exflow[$skew_index]}
         fi
 
         python3 src/start_harmony.py \
@@ -35,17 +41,18 @@ do
                 --num_samples $num_samples \
                 --batch_size $batch_size \
                 --seq_len $seq_len \
-                --model_name "Qwen/Qwen1.5-MoE-A2.7B-Chat" \
+                --model_name "mistralai/Mixtral-8x7B-Instruct-v0.1" \
                 --loader transformers \
-                --d_model 2048 \
-                --num_experts 60 \
-                --type_moe_parent Qwen2MoeDecoderLayer \
-                --type_moe Qwen2MoeSparseMoeBlock \
+                --d_model 4096 \
+                --model_dtype int8 \
+                --num_experts 8 \
+                --type_moe_parent MixtralDecoderLayer \
+                --type_moe MixtralSparseMoeBlock \
                 --router_tensor_path gate \
                 --name_experts experts \
                 --scheduling_policy $policy \
                 --expert_cache_size $expert_cache_size \
-                --expert_placement "ExFlow/placement/qwen-gpu$world_size.json" \
+                --expert_placement "ExFlow/placement/8_gpu${world_size}.json" \
                 --world_size $world_size \
                 --eq_tokens $eq_tokens \
                 --expert_fetching_strategy "async-cpu" \
@@ -53,6 +60,6 @@ do
                 --enable_router_skew $enable_skew \
                 --router_skew $skew \
                 --router_num_experts_skewed $num_experts_skewed \
-                --pa "outputs/exp-qwen-policies-skew/$datetime/$skew-$policy"
+                --pa "outputs/exp-mixtral-int8-policies-skew/$datetime/$skew-$policy"
     done    
 done
