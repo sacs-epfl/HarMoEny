@@ -1,0 +1,19 @@
+#!/bin/bash
+        python3 src/start_harmony.py \
+                --dataset "constant" \
+                --num_samples $num_samples \
+                --batch_size $batch_size \
+                --seq_len $seq_len \
+                --model_name "google/switch-base-$num_experts" \
+                --num_experts $num_experts \
+                --scheduling_policy $policy \
+                --expert_cache_size $expert_cache_size \
+                --expert_placement "ExFlow/placement/switch-exp${num_experts}-gpu${world_size}.json" \
+                --world_size $world_size \
+                --eq_tokens $eq_tokens \
+                --expert_fetching_strategy "async-cpu" \
+                --warmup_rounds $warmup_len \
+                --enable_router_skew $enable_skew \
+                --router_skew $skew \
+                --router_num_experts_skewed $num_experts_skewed \
+                --pa "outputs/exp-switch128-policies-skew/$datetime/$skew-$policy"

@@ -1,0 +1,10 @@
+from transformers import AutoModel
+
+model_name = "Qwen/Qwen1.5-MoE-A2.7B-Chat"  
+model = AutoModel.from_pretrained(model_name, cache_dir="../../cache")
+
+total_params = sum(p.numel() for p in model.parameters())
+size_in_gb = total_params * 4 / (1024 ** 3)  # Convert bytes to GB
+
+print(f"Model size (approximate): {size_in_gb:.2f} GB")
+

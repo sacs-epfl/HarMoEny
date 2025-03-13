@@ -1,10 +1,10 @@
-import matplotlib.pyplot as plt 
+import matplotlib.pyplot as plt
 import pandas as pd
 import ast
 import os
 import sys
 import json
-import argparse 
+import argparse
 import ast
 
 def parse_args():
@@ -15,6 +15,16 @@ def parse_args():
         help="One or more variables to extract from the runs (e.g., variable names)."
     )
     parser.add_argument(
+        "--variables_moe",
+        nargs="+",
+        help="One or more variables to extract from an MoE layer"
+    )
+    parser.add_argument(
+        "--variables_meta",
+        nargs="+",
+        help="One or more variables to extract from metadata"
+    )
+    parser.add_argument(
         "--paths",
         nargs="+",  # Allows one or more values
         help="One or more paths to obtain data from (e.g., file paths)."
@@ -22,7 +32,7 @@ def parse_args():
     parser.add_argument(
         "--metric",
         default="throughput",
-        help="The metric want to create a csv for: (throughput, mttft, gpu-balance, expert-freq)"
+        help="The metric want to create a csv for: (throughput, mttft, gpu-balance, expert-freq, timeline, basic)"
     )
     parser.add_argument(
         "--num_moe_layers",
@@ -35,6 +45,18 @@ def parse_args():
         default=8,
         type=int,
         help="The number of GPUs or ranks"
+    )
+    parser.add_argument(
+        "--output_name",
+        default="out",
+        type=str,
+        help="Name of the output csv"
+    )
+    parser.add_argument(
+        "--do",
+        default="save",
+        type=str,
+        help="What you want to do with the result: (save, print)"
     )
     return parser.parse_args()
 
@@ -62,6 +84,29 @@ def load_data(args):
             row["std div"] = _df["TTFT (ms)"] .std()
             row["num samples"] = len(_df["TTFT (ms)"] )
             df.append(row)
+        elif args.metric == "timeline":
+            _df = pd.read_csv(os.path.join(path, "0/e2e.csv"), index_col=0)
+            _df["throughput (toks/s)"] = (meta["batch_size"] * meta["world_size"]) / _df["latency (s)"]
+            if args.variables_meta:
+                for var in args.variables_meta:
+                    _df[var] = meta[var]
+            _df = _df.drop(columns=["latency (s)"])
+            df.append(_df)
+        elif args.metric == "basic":
+            _df = pd.DataFrame()
+            if args.variables_moe:
+                __df = pd.read_csv(os.path.join(path, "0/moe_layer-0.csv"), index_col=0)
+                _df = pd.concat([_df, __df[args.variables_moe]], axis=1)
+            if args.variables:
+                __df = pd.read_csv(os.path.join(path, "0/e2e.csv"), index_col=0)
+                _df = pd.concat([_df, __df[args.variables]], axis=1)
+            if args.variables_meta:
+                for var in args.variables_meta:
+                    _df[var] = meta[var]
+            if len(df) == 0:
+                df = _df
+            else:
+                df = pd.concat([_df, df])
         elif args.metric == "gpu-balance":
             for layer_idx in range(args.num_moe_layers):
                 _df = None
@@ -73,16 +118,16 @@ def load_data(args):
                         _df = __df
                     else:
                         _df = _df.merge(__df, on="iteration", how="outer")
-                
+
                 for itr in range(len(_df)):
                     row = {}
 
                     for var in args.variables:
                         row[var] = meta[var]
 
-                    row["iteration"] = itr 
+                    row["iteration"] = itr
                     row["layer_idx"] = layer_idx
-                    
+
                     df_row = _df.iloc[itr]
                     for i in df_row.index._data:
                         row[i] = df_row[i]
@@ -113,7 +158,7 @@ def load_data(args):
                         _df = gpu_sums_df
                     else:
                         _df += gpu_sums_df
-                
+
                 _df["max"] = _df.max(axis=1)
                 _df["min"] = _df.min(axis=1)
                 _df["imbalance (%)"] = ((_df["max"] - _df["min"]) / _df["min"]) * 100
@@ -142,7 +187,7 @@ def load_data(args):
                     for var in args.variables:
                         row[var] = meta[var]
 
-                    row["iteration"] = itr 
+                    row["iteration"] = itr
                     row["layer_idx"] = layer_idx
 
 
@@ -154,7 +199,15 @@ def load_data(args):
 
 
     if isinstance(df, dict) or isinstance(df, list):
-        df = pd.DataFrame(df)
+        if isinstance(df[0], pd.DataFrame):
+            _min = min(df, key=lambda x: len(x)).shape[0]
+            new_df = pd.DataFrame()
+            for _df in df:
+                new_df = pd.concat([new_df, _df[:_min]])
+            df = new_df
+        else:
+            df = pd.DataFrame(df)
+
     return df
 
 
@@ -163,9 +216,10 @@ def main():
 
     # Load and process data
     df = load_data(args)
-    print("Combined DataFrame:")
-    print(df)
-    df.to_csv(f"../data_processed/{args.metric}.csv")
+    if args.do == "print":
+        print(df)
+    else:
+        df.to_csv(f"../data_processed/{args.output_name}.csv")
 
 if __name__ == "__main__":
     main()

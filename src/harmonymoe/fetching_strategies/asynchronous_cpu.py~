@@ -106,7 +106,7 @@ class AsynchronousCPU:
         expert_order, need_loading, slot_idxs = self.generate_work_order(expert_mask)
         last_expert_exec = expert_order[-1] if len(expert_order) > 0 else None
 
-        num_experts_swapped_this_round = 0
+        num_experts_swaped_this_round = 0
 
         next_load_idx = 0
         for idx, expert_idx in enumerate(expert_order):
@@ -118,7 +118,7 @@ class AsynchronousCPU:
                 with torch.cuda.stream(self.comp_stream):
                     if expert_idx != self.local_cache[slot_idx]:
                         self.comp_stream.wait_event(self.expert_loaded[expert_idx])
-                        num_experts_swapped_this_round += 1
+                        num_experts_swaped_this_round += 1
 
                     # Execute the expert on the tokens
                     tokens[expert_mask[expert_idx]] = self.config.cached_experts[
@@ -134,7 +134,7 @@ class AsynchronousCPU:
                 expert_idx != self.local_cache[slot_idx]
             ):  # Nothing else to load, do I need to bring in the original?
                 self.load_expert_into_slot(self.local_cache[slot_idx], slot_idx)
-                num_experts_swapped_this_round += 1
+                num_experts_swaped_this_round += 1
 
             if expert_idx == last_expert_exec:
                 if expert_idx != self.local_cache[slot_idx]:
@@ -147,5 +147,4 @@ class AsynchronousCPU:
         return tokens
 
     def get_statistics(self):
-        # print(self.num_expert_swaps)
-        return { "num_expert_swaps": self.num_expert_swaps }
+        return {

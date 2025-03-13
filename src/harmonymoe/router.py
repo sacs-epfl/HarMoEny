@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import random
 from dataclasses import dataclass
 
 
@@ -15,7 +16,6 @@ class RouterConfig:
     skew: int = 0.05
     num_experts_skewed: int = 1
 
-
 class Router(nn.Module):
     def __init__(self, config):
         super(Router, self).__init__()
@@ -28,6 +28,7 @@ class Router(nn.Module):
         if config.enable_skew:
             self.forward_exec = self.skew_forward
         elif config.enable_random:
+            self.random = random.Random(128)
             self.forward_exec = self.random_forward
         elif config.enable_uniform:
             self.forward_exec = self.uniform_forward
@@ -42,6 +43,8 @@ class Router(nn.Module):
             if self.config.weights is not None:
                 with torch.no_grad():
                     self.router.weight.copy_(self.config.weights)
+
+        self.gini_indices = []
 
     def forward(self, x):
         return self.forward_exec(x)
@@ -73,7 +76,7 @@ class Router(nn.Module):
         # GINI INDEX
         #num_skewed = int((self.config.num_experts * x.shape[0] * self.config.skew + self.config.num_experts_skewed * x.shape[0]) / (self.config.num_experts_skewed * (self.config.num_experts - self.config.num_experts_skewed) * (1 + self.config.num_experts_skewed*self.config.num_experts_skewed)))
         num_skewed = int((self.config.num_experts * x.shape[0] * self.config.skew + self.config.num_experts_skewed * x.shape[0]) / (self.config.num_experts_skewed * (self.config.num_experts - 2 * self.config.num_experts_skewed)))
-        num_skewed = min(x.shape[0] / self.config.num_experts_skewed, num_skewed) # Cap it 
+        num_skewed = min(x.shape[0] / self.config.num_experts_skewed, num_skewed) # Cap it
         num_non_skewed = int((x.shape[0] - self.config.num_experts_skewed * num_skewed) / (self.config.num_experts - self.config.num_experts_skewed))
 
         # Generate temporary tensor
@@ -83,8 +86,8 @@ class Router(nn.Module):
         # Check if we have any missing
         disrepancy = x.shape[0] - num_tokens_each_expert.sum()
         for i in range(disrepancy): # Guaranteed to be less than the number of experts
-            num_tokens_each_expert[i] += 1 
-        
+            num_tokens_each_expert[i] += 1
+
         # Create the expert indices tensor
         expert_indices = []
         for i in range(self.config.num_experts):
@@ -116,11 +119,11 @@ class Router(nn.Module):
         # disrepancy = x.shape[0] - num_tokens_per_expert.sum()
         # for i in range(disrepancy): # Disrepancy must be less than self.config.num_experts
         #     multinomial_probs[i] += 1
-        
+
         # expert_indices = []
         # for expert_idx, num_tokens in enumerate(num_tokens_per_expert):
         #     expert_indices.append(torch.full((num_tokens.item(),), expert_idx, dtype=torch.long, device=x.device))
-        
+
         # expert_indices = torch.cat(expert_indices)
 
         # expert_indices = torch.multinomial(
@@ -157,13 +160,46 @@ class Router(nn.Module):
         return one_hot_experts, probs, one_hot_experts
 
     def random_forward(self, x):
-        expert_index = torch.randint(
-            0, self.config.num_experts, (x.shape[0],), dtype=torch.long, device=x.device
-        )
-        expert_index = nn.functional.one_hot(
-            expert_index, num_classes=self.config.num_experts
+        # expert_index = torch.randint(
+        #     0, self.config.num_experts, (x.shape[0],), dtype=torch.long, device=x.device
+        # )
+        # expert_index = nn.functional.one_hot(
+        #     expert_index, num_classes=self.config.num_experts
+        # )
+
+        # probs = torch.ones((x.shape[0], 1), dtype=x.dtype, device=x.device)
+
+        # return expert_index, probs, expert_index
+
+        skew = self.random.uniform(0,1)
+        self.gini_indices.append(skew)
+        num_skewed = int((self.config.num_experts * x.shape[0] * skew + self.config.num_experts_skewed * x.shape[0]) / (self.config.num_experts_skewed * (self.config.num_experts - 2 * self.config.num_experts_skewed)))
+        num_skewed = min(x.shape[0] / self.config.num_experts_skewed, num_skewed) # Cap it
+        num_non_skewed = int((x.shape[0] - self.config.num_experts_skewed * num_skewed) / (self.config.num_experts - self.config.num_experts_skewed))
+
+        # Generate temporary tensor
+        num_tokens_each_expert = torch.full((self.config.num_experts,), num_non_skewed, dtype=torch.long, device=x.device)
+        num_tokens_each_expert[:self.config.num_experts_skewed] = num_skewed
+
+        # Check if we have any missing
+        disrepancy = x.shape[0] - num_tokens_each_expert.sum()
+        for i in range(disrepancy): # Guaranteed to be less than the number of experts
+            num_tokens_each_expert[i] += 1
+
+        # Create the expert indices tensor
+        expert_indices = []
+        for i in range(self.config.num_experts):
+            expert_indices.append(torch.full((num_tokens_each_expert[i],), i, dtype=torch.long, device=x.device))
+
+        expert_indices = torch.cat(expert_indices)
+
+        expert_indices = nn.functional.one_hot(
+            expert_indices, num_classes=self.config.num_experts
         )
 
         probs = torch.ones((x.shape[0], 1), dtype=x.dtype, device=x.device)
 
-        return expert_index, probs, expert_index
+        return expert_indices, probs, expert_indices.to(dtype=torch.float)
+
+    def get_statistics(self):
+        return {"gini_indices": self.gini_indices}

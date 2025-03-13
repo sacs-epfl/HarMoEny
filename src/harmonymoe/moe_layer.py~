@@ -109,9 +109,6 @@ class MoELayer(nn.Module):
     def get_statistics(self):
         stats = []
         num_expert_swaps = self.expert_manager.get_statistics()["num_expert_swaps"]
-        # print(f"(rank: {self.config.rank}, idx: {self.layer_idx}) {num_expert_swaps}")
-        gini_indices = self.router.get_statistics()["gini_indices"]
-        have_gini_indices = len(gini_indices) > 0
         for i in range(len(self.tot_num_toks_send)):
             dic = {
                 "latency (ms)": self.latencies[i],
@@ -143,11 +140,7 @@ class MoELayer(nn.Module):
                 "total number of tokens sent": self.tot_num_toks_send[i],
                 "total number of tokens recv": self.tot_num_toks_recv[i],
                 "expert distribution": self.expert_freqs[i],
-                "num expert swaps": num_expert_swaps[i],
             }
-
-            if have_gini_indices:
-                dic["gini index"] = gini_indices[i]
 
             stats.append(dic)
         return stats
