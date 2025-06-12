@@ -1,5 +1,5 @@
 # HarMoEny
-This reposity holds the code to HarMoEny _and_ the accompanying artifacts for ATC'25. The code for HarMoEny can be found under `scr/harmonymoe`.
+This reposity holds the code to HarMoEny _and_ the accompanying artifacts for Middleware'25. The code for HarMoEny can be found under `scr/harmonymoe`.
 
 ## Pre-Setup
 If you are using an amazon EC2 instance, we recommend **p3dn.24xlarge**: which is the closest to our DGX1 machine. There is a setup script for your ec2 machine.
