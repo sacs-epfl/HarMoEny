@@ -8,9 +8,7 @@ expert_fetching_strategy="async-cpu"
 eq_tokens=1024 # will prob need updating
 warmup_len=3
 
-# exflow will need to be rerun for this model exflow removed temporarily
-policies=("deepspeed" "harmony" "even_split" "drop" "exflow")
-policies=("exflow")
+policies=("exflow" "deepspeed" "harmony" "even_split" "drop")
 datasets=("wmt19" "bookcorpus" "wikitext" "random")
 
 batch_size_deepspeed_exflow=16
@@ -49,5 +47,5 @@ do
                 --expert_fetching_strategy "async-cpu" \
                 --warmup_rounds $warmup_len \
                 --pa "outputs/exp-qwen-policies-dataset/$datetime/$dataset-$policy"
-    done    
+    done
 done
