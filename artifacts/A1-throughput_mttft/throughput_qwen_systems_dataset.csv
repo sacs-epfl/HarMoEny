@@ -1,0 +1,21 @@
+,dataset,system_name,throughput (toks/s)
+0,bookcorpus,deepspeed-inference,4.383655548317685
+1,bookcorpus,exflow,21.54715511050878
+2,bookcorpus,fastermoe,28.13689266249957
+3,bookcorpus,fastmoe,28.15061039141625
+4,bookcorpus,harmony,36.040519821648054
+5,random,deepspeed-inference,4.498701114984708
+6,random,exflow,23.11632167386634
+7,random,fastermoe,30.116944220554366
+8,random,fastmoe,30.109229483474536
+9,random,harmony,35.88123964108939
+10,wikitext,deepspeed-inference,4.3002348476915335
+11,wikitext,exflow,21.216756029392517
+12,wikitext,fastermoe,28.393069590270414
+13,wikitext,fastmoe,28.37427844988359
+14,wikitext,harmony,35.203773527911515
+15,wmt19,deepspeed-inference,4.441765786504265
+16,wmt19,exflow,22.47322144842141
+17,wmt19,fastermoe,27.750715648140897
+18,wmt19,fastmoe,27.826683634119775
+19,wmt19,harmony,36.209127410274355
