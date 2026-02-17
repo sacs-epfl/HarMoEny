@@ -11,9 +11,6 @@ skews=(0.9 0.5 0.0)
 fastmoe_batches=(4 8 32)
 deepspeed_batches=(1 4 16)
 
-skews=(0.5)
-fastmoe_batches=(8)
-
 cd ..
 for skew_index in "${!skews[@]}"
 do
