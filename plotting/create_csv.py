@@ -196,6 +196,43 @@ def load_data(args):
                         row[i] = df_row[i]
 
                     df.append(row)
+        elif args.metric == "timebreakdown":
+            for i in range(args.num_moe_layers):
+                _df = pd.DataFrame()
+                for j in range(args.world_size):
+                    __df = pd.read_csv(f"{path}/{j}/moe_layer-{i}.csv")
+                    __df = __df.loc[:, __df.columns.str.contains(r"\(ms\)", regex=True)]
+                    __df = __df.mean(axis=0)
+                    __df["rank"] = j
+
+                    _df = pd.concat([_df, __df.to_frame().T], ignore_index=True)
+
+                _df["rank"] = _df["rank"].astype(int)
+                max_comp = _df["comp latency (ms)"].max()
+                _df["wait latency (ms)"] = max_comp - _df["comp latency (ms)"]
+                _df["second transfer latency (ms)"] -= _df["wait latency (ms)"]
+                columns_to_sum = _df.columns.difference(["rank", "latency (ms)"])
+                _df["other latency (ms)"] = (_df["latency (ms)"] - _df[columns_to_sum].sum(axis=1)).clip(lower=0)
+                _df["layer"] = i
+
+                columns = _df.columns.values.tolist()
+                columns.remove("layer")
+                columns.insert(0, "layer")
+                _df = _df[columns]
+
+                for itr in range(len(_df)):
+                    row = {}
+
+                    df_row = _df.iloc[itr]
+                    for i in df_row.index._data:
+                        row[i] = df_row[i]
+
+                    df.append(row)
+
+                # print(_df)
+                # exit(1)
+
+                # df = pd.concat((df, _df), ignore_index=True)
 
 
     if isinstance(df, dict) or isinstance(df, list):

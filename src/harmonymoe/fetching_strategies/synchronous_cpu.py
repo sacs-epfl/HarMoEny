@@ -7,6 +7,9 @@ class SynchronousCPU:
         self.config = config
         self.load_finished = torch.cuda.Event(enable_timing=False)
         self.end_event = torch.cuda.Event(enable_timing=False)
+        
+        # Statistics
+        self.num_expert_swaps = []
 
     def load_expert_into_slot_synchronously(self, expert_idx, slot_idx):
         with nvtx.annotate(
@@ -26,6 +29,10 @@ class SynchronousCPU:
     def execute_job(self, tokens, expert_mask, schedule=None):
         expert_order = self.config.cache[self.config.rank][:]
         cached_experts_with_no_tokens = []
+        
+        # Statistics 
+        num_experts_swapped_this_round = 0
+
         for expert_idx in range(self.config.num_experts):
             if expert_mask[expert_idx].shape[0] == 0:
                 if expert_idx in self.config.cache[self.config.rank]:
@@ -44,6 +51,7 @@ class SynchronousCPU:
                 loaded = True
                 slot_idx = 0
                 self.load_expert_into_slot_synchronously(expert_idx, slot_idx)
+                num_experts_swapped_this_round += 1
             else:
                 slot_idx = self.config.cache[self.config.rank].index(expert_idx)
 
@@ -55,7 +63,12 @@ class SynchronousCPU:
             self.load_expert_into_slot_synchronously(
                 self.config.cache[self.config.rank][0], 0
             )
+            num_experts_swapped_this_round += 1
+
         self.end_event.record()
         self.end_event.synchronize()
-
+        self.num_expert_swaps.append(num_experts_swapped_this_round)
         return tokens
+
+    def get_statistics(self):
+        return { "num_expert_swaps": self.num_expert_swaps }
