@@ -183,9 +183,10 @@ def load_data(args):
 
                 for itr in range(len(_df)):
                     row = {}
-
-                    for var in args.variables:
-                        row[var] = meta[var]
+                    
+                    if args.variables:
+                        for var in args.variables:
+                            row[var] = meta[var]
 
                     row["iteration"] = itr
                     row["layer_idx"] = layer_idx
@@ -228,12 +229,6 @@ def load_data(args):
                         row[i] = df_row[i]
 
                     df.append(row)
-
-                # print(_df)
-                # exit(1)
-
-                # df = pd.concat((df, _df), ignore_index=True)
-
 
     if isinstance(df, dict) or isinstance(df, list):
         if isinstance(df[0], pd.DataFrame):
