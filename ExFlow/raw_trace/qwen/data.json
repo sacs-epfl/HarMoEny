@@ -1,11 +1,11 @@
 {
-    "start": 1736358846.882421,
-    "end": 1736358849.0265608,
+    "start": 1771303214.786131,
+    "end": 1771303216.208048,
     "dataset": "bookcorpus",
-    "num_samples": 48,
-    "batch_size": 8,
+    "num_samples": 510,
+    "batch_size": 85,
     "start_batch_size": 1,
-    "seq_len": 1024,
+    "seq_len": 60,
     "num_experts": 60,
     "loader": "transformers",
     "model_name": "Qwen/Qwen1.5-MoE-A2.7B-Chat",
@@ -23,7 +23,7 @@
     "world_size": 6,
     "port": "1234",
     "warmup_rounds": 0,
-    "path": "outputs/qwen/2025-01-08_17-53",
+    "path": "./raw_trace/qwen",
     "expert_placement": null,
     "enable_router_skew": false,
     "enable_router_random": false,
@@ -31,5 +31,6 @@
     "router_skew": 0.0,
     "router_num_experts_skewed": 1,
     "random_router_skew": false,
-    "expert_fetching_strategy": "async-cpu"
+    "expert_fetching_strategy": "async-cpu",
+    "system_name": "harmony"
 }

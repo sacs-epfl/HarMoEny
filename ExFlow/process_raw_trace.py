@@ -6,7 +6,7 @@ import json
 import os 
 
 if len(sys.argv) < 2:
-    print("Please provide root path to conversion request")
+    print("Please provide root path to conversion request and number of layers")
     exit(0)
 
 path = sys.argv[1]
@@ -17,7 +17,7 @@ if path[-1] == "/":
 with open(f"{path}/data.json", "r") as f:
     meta = json.load(f)
 
-num_layers = 24
+num_layers = int(sys.argv[2])
 num_ranks = meta["world_size"]
 num_experts = meta["num_experts"]
 num_tokens = meta["seq_len"] * meta["batch_size"] * num_ranks

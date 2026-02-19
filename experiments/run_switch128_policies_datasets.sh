@@ -13,13 +13,6 @@ warmup_len=3
 policies=("deepspeed" "harmony" "drop" "even_split" "exflow")
 datasets=("wmt19" "bookcorpus" "wikitext" "random")
 
-# datasets=("wikitext")
-# policies=("harmony")
-
-# datasets=("wikitext" "wmt19")
-# policies=("harmony")
-
-# originally 64
 batch_size_deepspeed_exflow=64
 batch_size_harmony_drop_even_split=64
 
@@ -50,5 +43,5 @@ do
                 --expert_fetching_strategy "async-cpu" \
                 --warmup_rounds $warmup_len \
                 --pa "outputs/exp-switch128-policies-dataset/$datetime/$dataset-$policy"
-    done    
+    done
 done

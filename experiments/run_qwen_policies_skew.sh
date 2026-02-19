@@ -5,13 +5,12 @@ seq_len=1024
 world_size=6
 expert_cache_size=10
 expert_fetching_strategy="async-cpu"
-eq_tokens=1512 # will prob need updating
+eq_tokens=1512
 warmup_len=3
 
 enable_skew=True
 num_experts_skewed=1
 
-# exflow will need to be rerun for this model exflow removed temporarily
 policies=("deepspeed" "harmony" "even_split" "drop" "exflow")
 skews=(0.9 0.5 0.0)
 
@@ -54,5 +53,5 @@ do
                 --router_skew $skew \
                 --router_num_experts_skewed $num_experts_skewed \
                 --pa "outputs/exp-qwen-policies-skew/$datetime/$skew-$policy"
-    done    
+    done
 done

@@ -147,5 +147,4 @@ class AsynchronousCPU:
         return tokens
 
     def get_statistics(self):
-        # print(self.num_expert_swaps)
         return { "num_expert_swaps": self.num_expert_swaps }
