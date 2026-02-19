@@ -1,4 +1,7 @@
 # HarMoEny
+
+[![DOI](https://zenodo.org/badge/822186843.svg)](https://doi.org/10.5281/zenodo.18700392)
+
 This reposity holds the code to HarMoEny _and_ accompanying experiments and obtained values. The code for HarMoEny can be found under `scr/harmonymoe`.
 
 ## Pre-Setup
