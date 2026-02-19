@@ -87,6 +87,8 @@ def load_data(args):
         elif args.metric == "timeline":
             _df = pd.read_csv(os.path.join(path, "0/e2e.csv"), index_col=0)
             _df["throughput (toks/s)"] = (meta["batch_size"] * meta["world_size"]) / _df["latency (s)"]
+            for var in args.variables:
+                _df[var] = meta[var]
             if args.variables_meta:
                 for var in args.variables_meta:
                     _df[var] = meta[var]
