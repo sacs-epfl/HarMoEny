@@ -21,3 +21,17 @@ Once the image is built you can start the image with `./start_image.sh`. After n
 ## Important
 - If you want to run ExFlow you need to get a gurobi license; see `licenses/README.md`.
 - HF will save to `/cache` inside the docker container. The default location is `../cache`, you can change it in `start_image.sh`.
+
+## Reference
+
+If you find our work useful, you can cite us as follows:
+
+```
+@inproceedings{doucet2026harmoeny,
+  title={Harmoeny: Efficient multi-gpu inference of moe models},
+  author={Doucet, Zachary and Sharma, Rishi and de Vos, Martijn and Pires, Rafael and Kermarrec, Anne-Marie and Balmau, Oana},
+  booktitle={2026 IEEE International Parallel and Distributed Processing Symposium (IPDPS)},
+  year={2026},
+  organization={IEEE}
+}
+```
